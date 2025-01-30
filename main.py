@@ -3,6 +3,21 @@ from pathlib import Path
 import PyPDF2
 from ollama import Client  # Ensure ollama is installed
 
+def generate_file_name(client, file_content, max_length=50):
+    """Generate a descriptive file name based on content"""
+    name_prompt = f"""Generate a very short, descriptive filename (without extension) for a document with this content. 
+    Use lowercase, underscores for spaces, max {max_length} chars, no special characters:
+    {file_content[:2000]}
+    
+    Respond with just the filename, nothing else."""
+    
+    response = client.chat(
+        model='mistral',
+        messages=[{'role': 'user', 'content': name_prompt}]
+    )
+    
+    return response['message']['content'].strip()
+
 def list_and_summarize_files():
     # Ask user for directory path
     directory = input("Please enter the directory path: ").strip()
@@ -69,17 +84,17 @@ def list_and_summarize_files():
             messages=[{
                 'role': 'user',
                 'content': f"""Based on these file summaries, suggest 2-4 broad, general categories that would organize these files logically.
-                Use only common, high-level categories like these examples:
-                - research_papers
-                - work
-                - personal
-                - financial
-                - meeting_notes
-                - documentation
-                - data
-                - projects
+                Use only common, high-level organizationalcategories like these examples:
+                - Financial
+                - Food_and_Recipes
+                - Meetings_and_Notes
+                - Personal
+                - Photos
+                - Travel
+                - Work
+                - Projects
                 
-                Do not use specific topic categories (like 'ocean_studies' or 'animal_research').
+                Do not use specific topic categories (like 'ocean_studies' or 'animal_research'). It should be names for folders, not topics.
 
 {summaries_context}
 
@@ -110,6 +125,28 @@ File summary: {summary}"""
             category = categorize_response['message']['content'].strip().lower()
             file_categories[file_path] = category
                 
+        # Generate new file names
+        new_file_names = {}
+        print("\nGenerating descriptive file names...")
+        for file_path in files_to_process:
+            try:
+                text = ""
+                if file_path.lower().endswith('.pdf'):
+                    with open(file_path, 'rb') as file:
+                        reader = PyPDF2.PdfReader(file)
+                        for page in reader.pages:
+                            text += page.extract_text()
+                else:  # .txt file
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        text = file.read()
+                
+                new_name = generate_file_name(client, text)
+                ext = os.path.splitext(file_path)[1]
+                new_file_names[file_path] = f"{new_name}{ext}"
+            except Exception as e:
+                print(f"Error generating name for {file_path}: {str(e)}")
+                new_file_names[file_path] = os.path.basename(file_path)
+
         # Show proposed file structure
         print("\nProposed File Structure:")
         print(f"{directory}/")
@@ -119,13 +156,13 @@ File summary: {summary}"""
         for file_path, category in file_categories.items():
             if category not in categorized_files:
                 categorized_files[category] = []
-            categorized_files[category].append(os.path.basename(file_path))
+            categorized_files[category].append((file_path, new_file_names[file_path]))
         
-        # Print proposed structure (clean version)
+        # Print proposed structure
         for category, files in sorted(categorized_files.items()):
             print(f"└── {category}/")
-            for file in sorted(files):
-                print(f"    └── {file}")
+            for _, new_name in sorted(files):
+                print(f"    └── {new_name}")
         
         # Ask if user wants to apply changes
         response = input("\nWould you like to apply these changes? (y/n): ").lower()
@@ -133,9 +170,10 @@ File summary: {summary}"""
             for file_path, category in file_categories.items():
                 proposed_path = os.path.join(directory, category)
                 os.makedirs(proposed_path, exist_ok=True)
-                new_file_path = os.path.join(proposed_path, os.path.basename(file_path))
+                new_name = new_file_names[file_path]
+                new_file_path = os.path.join(proposed_path, new_name)
                 os.rename(file_path, new_file_path)
-            print("Files have been reorganized according to the proposed structure.")
+            print("Files have been reorganized and renamed according to the proposed structure.")
     else:
         print("No PDF or TXT files found")
 
