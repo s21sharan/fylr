@@ -58,51 +58,76 @@ def generate_file_name(client, file_content, max_length=50):
 def normalize_category(category, client):
     """Normalize categories to ensure consistent grouping using AI"""
     
-    normalization_prompt = f"""Given this specific category name: '{category}'
-Determine if this represents a more specific version of a broader category.
-If it does, return the broader category name. If not, return the original.
+    # First, remove any quotes and extra spaces
+    category = category.replace("'", "").replace('"', "").strip()
+    
+    normalization_prompt = f"""Given this specific category name: {category}
+Determine the most appropriate general category based on the actual content type.
+Return a single normalized category name that groups similar content together.
 
 Rules:
 - Use lowercase with underscores for spaces
-- Combine variations into their broader category (e.g., 'thai_recipe' → 'recipes')
-- Keep responses very broad and general
-- Return exactly ONE word/category
+- NO quotes in the response
+- Group by actual content purpose/type:
+  * Travel-related content (itineraries, guides, trip plans) → travel
+  * Cooking/food related (recipes, cookbooks, meal plans) → cooking
+  * Pet/animal related content → pets
+  * Exercise/sports/outdoor activities → fitness
+  * Educational content (tutorials, courses) → education
+  * Work documents (reports, presentations) → work
+  * Personal documents (IDs, certificates) → personal
+  * Entertainment (music, videos, games) → entertainment
 
 Examples:
-- 'hawaii_travel_guide' → 'travel_guides'
-- 'chocolate_cake_recipe' → 'recipes'
-- 'siamese_cat_care' → 'pets'
-- 'python_tutorial' → 'tutorials'
-- 'summer_playlist' → 'music'
-- 'research_paper' → 'research_paper'
+- 'climbing_guide' → fitness
+- 'japan_travel_guide' → travel
+- 'trip_itinerary' → travel
+- 'cat_photo' → pets
+- 'thai_recipe' → cooking
+- 'workout_plan' → fitness
+- 'lecture_notes' → education
 
-Response (just the broader category name):"""
+Response (just the category name without quotes):"""
 
     response = client.chat(
         model='mistral',
         messages=[{'role': 'user', 'content': normalization_prompt}]
     )
     
-    normalized = response['message']['content'].strip().lower()
+    # Clean up the response to ensure no quotes
+    normalized = response['message']['content'].strip().lower().replace("'", "").replace('"', "")
     return normalized
 
 def suggest_content_based_categories(client, summaries):
     """Generate content-based categories based on file summaries"""
     categories_prompt = f"""Based on these file summaries, suggest 2-4 broad content-based categories.
-    Categories should be consistent and general enough to group similar content together.
+    Categories should focus on the actual content purpose/type.
+    Group similar content together based on its use/purpose.
     Use lowercase with underscores for spaces.
+    DO NOT include any quotes in category names.
+    
+    Common category examples:
+    - travel for all travel-related content (guides, itineraries, trip plans)
+    - pets for animal-related content
+    - cooking for food-related content
+    - fitness for exercise/sports content
+    - education for learning materials
+    - work for professional documents
+    - personal for personal documents
     
     File Summaries:
     {summaries}
     
-    Respond with just the category names in lowercase, one per line:"""
+    Respond with just the category names in lowercase, one per line, no quotes:"""
     
     response = client.chat(
         model='mistral',
         messages=[{'role': 'user', 'content': categories_prompt}]
     )
     
-    categories = [cat.strip() for cat in response['message']['content'].strip().split('\n')]
+    # Clean up categories to ensure no quotes
+    categories = [cat.strip().replace("'", "").replace('"', "") 
+                 for cat in response['message']['content'].strip().split('\n')]
     return categories
 
 def get_file_summary(file_path, client, image_classifier):
