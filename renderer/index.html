@@ -2,40 +2,63 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>File Organizer</title>
+  <title>Fylr</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
-    <h1>File Organizer</h1>
+    <h1>Fylr</h1>
     
-    <div class="input-section">
-      <div class="directory-input">
-        <input type="text" id="directoryPath" placeholder="Enter directory path..." readonly>
-        <button id="browseBtn">Browse</button>
-      </div>
-      <button id="analyzeBtn" disabled>Analyze Files</button>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="initial-organize">Initial Organize</button>
+      <button class="tab-btn" data-tab="live-mode">Live Mode</button>
+      <button class="tab-btn" data-tab="agentic-search">Agentic Search</button>
     </div>
-    
-    <div class="loader" id="loader">
-      <div class="spinner"></div>
-      <p>Analyzing files and generating structure...</p>
+
+    <div class="tab-content active" id="initial-organize">
+      <div class="input-section">
+        <div class="directory-input">
+          <input 
+            type="text" 
+            id="directoryPath" 
+            placeholder="Type or browse for directory path..."
+            spellcheck="false"
+          >
+          <button id="browseBtn">Browse</button>
+        </div>
+        <button id="analyzeBtn" disabled>Analyze Files</button>
+      </div>
+      
+      <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <p>Analyzing files and generating structure...</p>
+      </div>
+      
+      <div class="results-container" id="resultsContainer">
+        <h2>Proposed File Structure</h2>
+        <div class="button-bar">
+          <button id="addDirBtn">Add Directory</button>
+          <button id="expandAllBtn">Expand All</button>
+          <button id="collapseAllBtn">Collapse All</button>
+        </div>
+        <div class="tree-container">
+          <div id="fileTree" class="file-tree"></div>
+        </div>
+        <div class="controls-container">
+          <button id="resetBtn">Reset to Original</button>
+          <button id="applyBtn">Apply Changes</button>
+        </div>
+      </div>
     </div>
-    
-    <div class="results-container" id="resultsContainer">
-      <h2>Proposed File Structure</h2>
-      <div class="button-bar">
-        <button id="addDirBtn">Add Directory</button>
-        <button id="expandAllBtn">Expand All</button>
-        <button id="collapseAllBtn">Collapse All</button>
-      </div>
-      <div class="tree-container">
-        <div id="fileTree" class="file-tree"></div>
-      </div>
-      <div class="controls-container">
-        <button id="resetBtn">Reset to Original</button>
-        <button id="applyBtn">Apply Changes</button>
-      </div>
+
+    <div class="tab-content" id="live-mode">
+      <h2>Live Mode</h2>
+      <p>Live file organization coming soon...</p>
+    </div>
+
+    <div class="tab-content" id="agentic-search">
+      <h2>Agentic Search</h2>
+      <p>Intelligent file search coming soon...</p>
     </div>
     
     <div id="messageContainer" class="message-container"></div>

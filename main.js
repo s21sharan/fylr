@@ -22,6 +22,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: 'Fylr',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -42,7 +43,17 @@ app.on('activate', () => {
   if (mainWindow === null) createWindow();
 });
 
-// Handle directory selection
+// Add new IPC handler for directory validation
+ipcMain.handle('validate-directory', async (event, dirPath) => {
+  try {
+    const stats = await fs.promises.stat(dirPath);
+    return stats.isDirectory();
+  } catch (error) {
+    return false;
+  }
+});
+
+// Existing directory selection handler
 ipcMain.handle('select-directory', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory']
