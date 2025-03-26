@@ -178,10 +178,15 @@ function buildFileTree(data) {
     dirStructure[''].forEach(file => {
       const li = document.createElement('li');
       li.className = 'file';
-      li.textContent = file.fileName;
+      
+      // Add file icon based on extension
+      const fileIcon = getFileIcon(file.fileName);
+      li.innerHTML = `<span class="file-icon">${fileIcon}</span> ${file.fileName}`;
+      
       li.title = `Original: ${file.originalPath}\nNew: ${file.newPath}`;
       li.setAttribute('data-src', file.originalPath);
       li.setAttribute('data-dst', file.newPath);
+      li.setAttribute('data-filename', file.fileName);
       li.setAttribute('draggable', 'true');
       rootList.appendChild(li);
     });
@@ -192,13 +197,23 @@ function buildFileTree(data) {
     // Create directory element
     const dirLi = document.createElement('li');
     dirLi.className = 'folder open';
-    dirLi.textContent = dir;
+    
+    // Use span for the text to prevent interference with the action buttons
+    dirLi.innerHTML = `<span class="folder-name">${dir}</span>`;
     dirLi.setAttribute('data-dir', dir);
     
-    // Add folder actions
+    // Add folder actions with stopPropagation
     const folderActions = document.createElement('span');
     folderActions.className = 'folder-actions';
-    folderActions.innerHTML = '<button class="remove-dir">✖</button>';
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-dir';
+    removeBtn.innerHTML = '✖';
+    removeBtn.title = 'Remove Directory';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeDirectory(dirLi);
+    });
+    folderActions.appendChild(removeBtn);
     dirLi.appendChild(folderActions);
     
     rootList.appendChild(dirLi);
@@ -211,10 +226,15 @@ function buildFileTree(data) {
     dirStructure[dir].forEach(file => {
       const fileLi = document.createElement('li');
       fileLi.className = 'file';
-      fileLi.textContent = file.fileName;
+      
+      // Add file icon based on extension
+      const fileIcon = getFileIcon(file.fileName);
+      fileLi.innerHTML = `<span class="file-icon">${fileIcon}</span> ${file.fileName}`;
+      
       fileLi.title = `Original: ${file.originalPath}\nNew: ${file.newPath}`;
       fileLi.setAttribute('data-src', file.originalPath);
       fileLi.setAttribute('data-dst', file.newPath);
+      fileLi.setAttribute('data-filename', file.fileName);
       fileLi.setAttribute('draggable', 'true');
       dirFiles.appendChild(fileLi);
     });
@@ -225,31 +245,18 @@ function buildFileTree(data) {
   
   // Add event listeners for folders
   document.querySelectorAll('.folder').forEach(folder => {
-    folder.addEventListener('click', toggleFolder);
-  });
-  
-  // Add event listeners for folder removal
-  document.querySelectorAll('.remove-dir').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const dirElement = e.target.closest('.folder');
-      removeDirectory(dirElement);
+    folder.addEventListener('click', (e) => {
+      // Don't toggle if clicking on action buttons
+      if (e.target.closest('.folder-actions')) return;
+      
+      // Toggle folder
+      folder.classList.toggle('open');
+      const filesList = folder.querySelector('ul');
+      if (filesList) {
+        filesList.style.display = folder.classList.contains('open') ? 'block' : 'none';
+      }
     });
   });
-}
-
-// Toggle folder expansion/collapse
-function toggleFolder(e) {
-  if (e.target !== this && !e.target.classList.contains('folder')) return;
-  
-  const isFolder = this.classList.contains('folder');
-  if (!isFolder) return;
-  
-  this.classList.toggle('open');
-  const filesList = this.querySelector('ul');
-  if (filesList) {
-    filesList.style.display = this.classList.contains('open') ? 'block' : 'none';
-  }
 }
 
 // Expand all folders
@@ -308,11 +315,16 @@ function setupDragAndDrop() {
   dropTargets.forEach(target => {
     target.addEventListener('dragover', function(e) {
       e.preventDefault();
-      this.classList.add('drop-target');
+      if (!this.classList.contains('drop-target')) {
+        this.classList.add('drop-target');
+      }
     });
     
-    target.addEventListener('dragleave', function() {
-      this.classList.remove('drop-target');
+    target.addEventListener('dragleave', function(e) {
+      // Only remove the class if we're not hovering over any child element
+      if (!this.contains(e.relatedTarget)) {
+        this.classList.remove('drop-target');
+      }
     });
     
     target.addEventListener('drop', function(e) {
@@ -327,6 +339,12 @@ function setupDragAndDrop() {
       // Move the item in the DOM
       targetList.appendChild(draggedItem);
       
+      // Add a subtle highlight instead of dark blue
+      draggedItem.style.backgroundColor = '#f0f7ff';
+      setTimeout(() => {
+        draggedItem.style.backgroundColor = '';
+      }, 800);
+      
       // Update the path
       updateFilePathAfterDrag(draggedItem, targetDir);
       
@@ -340,7 +358,7 @@ function setupDragAndDrop() {
 
 // Update file path after dragging to a new directory
 function updateFilePathAfterDrag(fileElement, newDir) {
-  const fileName = fileElement.textContent;
+  const fileName = fileElement.getAttribute('data-filename') || fileElement.textContent.trim();
   const srcPath = fileElement.getAttribute('data-src');
   let newPath;
   
@@ -416,13 +434,21 @@ function addNewDirectory(dirName) {
   const rootList = fileTree.querySelector('ul');
   const dirLi = document.createElement('li');
   dirLi.className = 'folder';
-  dirLi.textContent = dirName;
+  dirLi.innerHTML = `<span class="folder-name">${dirName}</span>`;
   dirLi.setAttribute('data-dir', dirName);
   
-  // Add folder actions
+  // Add folder actions with stopPropagation
   const folderActions = document.createElement('span');
   folderActions.className = 'folder-actions';
-  folderActions.innerHTML = '<button class="remove-dir">✖</button>';
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'remove-dir';
+  removeBtn.innerHTML = '✖';
+  removeBtn.title = 'Remove Directory';
+  removeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    removeDirectory(dirLi);
+  });
+  folderActions.appendChild(removeBtn);
   dirLi.appendChild(folderActions);
   
   // Add the directory's file list
@@ -434,37 +460,95 @@ function addNewDirectory(dirName) {
   setupDragAndDrop();
   
   // Add event listener for folder expansion/collapse
-  dirLi.addEventListener('click', toggleFolder);
-  
-  // Add event listener for removing directory
-  dirLi.querySelector('.remove-dir').addEventListener('click', (e) => {
-    e.stopPropagation();
-    removeDirectory(dirLi);
+  dirLi.addEventListener('click', (e) => {
+    if (e.target.closest('.folder-actions')) return;
+    
+    dirLi.classList.toggle('open');
+    const filesList = dirLi.querySelector('ul');
+    if (filesList) {
+      filesList.style.display = dirLi.classList.contains('open') ? 'block' : 'none';
+    }
   });
 }
 
 // Remove a directory
 function removeDirectory(dirElement) {
+  // Highlight the directory being removed
+  dirElement.style.backgroundColor = '#ffebee';
+  dirElement.style.borderColor = '#ffcdd2';
+  
   // Check if directory has files
   const filesList = dirElement.querySelector('ul');
   const files = filesList ? filesList.querySelectorAll('li.file') : [];
   
   if (files.length > 0) {
     if (!confirm(`Directory "${dirElement.getAttribute('data-dir')}" contains ${files.length} files. Move them to the root directory?`)) {
+      // Reset the highlighting if cancelled
+      dirElement.style.backgroundColor = '';
+      dirElement.style.borderColor = '';
       return;
     }
     
     // Move files to root
     const rootList = fileTree.querySelector('ul');
+    
+    // Animate files being moved to root
     files.forEach(file => {
-      rootList.appendChild(file.cloneNode(true));
-      updateFilePathAfterDrag(file, 'ROOT');
+      const clone = file.cloneNode(true);
+      rootList.appendChild(clone);
+      
+      // Add animation to highlight the moved files
+      clone.style.backgroundColor = '#e8f5e9';
+      setTimeout(() => {
+        clone.style.backgroundColor = '';
+      }, 1000);
+      
+      updateFilePathAfterDrag(clone, 'ROOT');
     });
   }
   
-  // Remove the directory from the UI
-  dirElement.remove();
+  // Add a quick fade-out animation
+  dirElement.style.transition = 'opacity 0.3s, transform 0.3s';
+  dirElement.style.opacity = '0';
+  dirElement.style.transform = 'translateX(20px)';
   
-  // Update the data structure
-  updateFileStructure();
+  // Remove the directory from the UI after animation
+  setTimeout(() => {
+    dirElement.remove();
+    // Update the data structure
+    updateFileStructure();
+  }, 300);
+}
+
+// Add file icons based on file type
+function getFileIcon(fileName) {
+  const extension = fileName.split('.').pop().toLowerCase();
+  
+  // Map file extensions to appropriate emoji icons
+  const iconMap = {
+    'pdf': '📕',
+    'doc': '📘',
+    'docx': '📘',
+    'txt': '📝',
+    'jpg': '🖼️',
+    'jpeg': '🖼️',
+    'png': '🖼️',
+    'gif': '🖼️',
+    'mp3': '🎵',
+    'mp4': '🎬',
+    'xls': '📊',
+    'xlsx': '📊',
+    'ppt': '📊',
+    'pptx': '📊',
+    'zip': '🗜️',
+    'rar': '🗜️',
+    'csv': '📊',
+    'json': '📋',
+    'xml': '📋',
+    'html': '🌐',
+    'css': '🌐',
+    'js': '📜'
+  };
+  
+  return iconMap[extension] || '📄';
 }
