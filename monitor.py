@@ -67,7 +67,7 @@ class FileChangeHandler(FileSystemEventHandler):
     def organize_files(self, directory, files):
         """Organize the given files using the same logic as initial_organize.py"""
         # Import functions from initial_organize.py
-        from initial_organize import (get_file_summary, normalize_category,
+        from backend.initial_organize import (get_file_summary, normalize_category,
                                     suggest_content_based_categories, get_file_hash)
         
         # Check for duplicates first
