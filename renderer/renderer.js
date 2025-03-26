@@ -13,6 +13,19 @@ const messageContainer = document.getElementById('messageContainer');
 // Store file structure data
 let fileStructureData = null;
 
+// Add at the beginning of the file
+const DEBUG = true;
+
+function debugLog(message, data) {
+  if (DEBUG) {
+    if (data) {
+      console.log(`[DEBUG] ${message}`, data);
+    } else {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+}
+
 // Event listeners
 browseBtn.addEventListener('click', async () => {
   const directoryPath = await ipcRenderer.invoke('select-directory');
@@ -26,6 +39,8 @@ analyzeBtn.addEventListener('click', async () => {
   const directoryPath = directoryInput.value;
   if (!directoryPath) return;
   
+  debugLog(`Starting analysis for directory: ${directoryPath}`);
+  
   // Show loader
   loader.style.display = 'flex';
   resultsContainer.style.display = 'none';
@@ -33,15 +48,25 @@ analyzeBtn.addEventListener('click', async () => {
   
   try {
     // Call backend to analyze directory
+    debugLog("Calling IPC to analyze directory");
+    
+    const startTime = performance.now();
     fileStructureData = await ipcRenderer.invoke('analyze-directory', directoryPath);
+    const endTime = performance.now();
+    
+    debugLog(`Analysis completed in ${(endTime - startTime) / 1000} seconds`);
+    debugLog("File structure data received:", fileStructureData);
     
     // Build the file tree visualization
+    debugLog("Building file tree visualization");
     buildFileTree(fileStructureData);
     
     // Hide loader and show results
     loader.style.display = 'none';
     resultsContainer.style.display = 'block';
+    debugLog("UI updated to show results");
   } catch (error) {
+    debugLog("Error during analysis:", error);
     loader.style.display = 'none';
     showMessage(`Error analyzing directory: ${error.message}`, 'error');
   }

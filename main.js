@@ -6,6 +6,18 @@ const { getPythonPath } = require('./find_python.js');
 
 let mainWindow;
 
+const DEBUG = true;
+
+function debug(message, data) {
+  if (DEBUG) {
+    if (data) {
+      console.log(`[DEBUG] ${message}`, data);
+    } else {
+      console.log(`[DEBUG] ${message}`);
+    }
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -44,17 +56,20 @@ ipcMain.handle('select-directory', async () => {
 
 // Run Python script to analyze directory
 ipcMain.handle('analyze-directory', async (event, directoryPath) => {
+  debug(`Starting directory analysis: ${directoryPath}`);
   return new Promise((resolve, reject) => {
     // Create a temporary JSON file to pass the directory path to Python
     const configPath = path.join(app.getPath('temp'), 'file_organizer_config.json');
+    debug(`Creating config file at: ${configPath}`);
     fs.writeFileSync(configPath, JSON.stringify({ directory: directoryPath }));
     
     // Path to Python script
     const scriptPath = path.join(__dirname, 'backend', 'initial_organize_electron.py');
+    debug(`Using Python script: ${scriptPath}`);
     
     // Get the path to the virtual environment's Python executable
     const pythonPath = getPythonPath();
-    console.log(`Using Python interpreter: ${pythonPath}`);
+    debug(`Using Python interpreter: ${pythonPath}`);
     
     const options = {
       mode: 'text',
@@ -63,16 +78,21 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
       args: [configPath]
     };
     
+    debug('Starting Python process with options', options);
     PythonShell.run(scriptPath, options, (err, results) => {
       if (err) {
         console.error('Python script error:', err);
+        debug('Python execution failed with error', err);
         reject(err);
         return;
       }
       
+      debug(`Python script execution completed with ${results.length} lines of output`);
+      
       // The last line of output should be the file structure JSON
       try {
         // Find the JSON output (the line after RAW LLM RESPONSE)
+        debug('Processing Python output to find JSON response');
         let jsonOutput = '';
         let foundRawLLMResponse = false;
         
@@ -82,40 +102,50 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
           }
           if (line.includes('RAW LLM RESPONSE:')) {
             foundRawLLMResponse = true;
+            debug('Found LLM response marker in output');
           }
         }
         
-        console.log('Attempting to parse:', jsonOutput);
+        debug('Attempting to parse JSON output');
+        debug('JSON content to parse:', jsonOutput.substring(0, 500) + '...');
         
         // Extract JSON using a more robust approach
-        // Look for a valid JSON structure - matching outermost braces
         const jsonRegex = /{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*}/g;
         const matches = jsonOutput.match(jsonRegex);
         
         if (matches && matches.length > 0) {
+          debug(`Found ${matches.length} potential JSON matches`);
           // Try each potential JSON match until one parses successfully
           let result = null;
           for (const match of matches) {
             try {
+              debug('Trying to parse JSON match', match.substring(0, 100) + '...');
               result = JSON.parse(match);
-              if (result) break;
+              if (result) {
+                debug('Successfully parsed JSON data');
+                break;
+              }
             } catch (e) {
-              console.log('Failed to parse potential JSON match:', e);
+              debug(`Failed to parse potential JSON match: ${e.message}`);
               // Continue to next match
             }
           }
           
           if (result) {
+            debug('Returning parsed result structure', result);
             resolve(result);
           } else {
+            debug('No valid JSON structures found');
             throw new Error('None of the extracted JSON structures were valid');
           }
         } else {
+          debug('No JSON patterns found in output');
           throw new Error('Could not find valid JSON structure in Python output');
         }
       } catch (error) {
         console.error('Error parsing Python output:', error);
-        console.error('Raw output:', results.join('\n'));
+        debug('Error parsing output', error);
+        debug('Raw output:', results.join('\n'));
         reject(error);
       }
     });

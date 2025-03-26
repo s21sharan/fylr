@@ -9,6 +9,16 @@ import mimetypes
 import hashlib
 import csv
 import time
+from transformers import AutoImageProcessor, AutoModelForImageClassification
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger('file_organizer')
 
 FILE_PROMPT = """
 You will be provided with list of source files and a summary of their contents. Organize all the files into a directory structure that optimally organizes the files using known conventions and best practices.
@@ -16,57 +26,29 @@ Follow good naming conventions.
 
 - Group files by content type into categories such as "images", "recipes", "travel", "school", "work", "home", etc.
 - try to group as many files as you can into the same category
-- Use a maximum of 1-2 levels of nesting in the directory structure
+- Use EXACTLY ONE level of nesting in the directory structure. No subfolders allowed.
+- All files must be placed directly into their category folder without any additional subfolder structure.
 
-use this as an example for organization:
-{
-  "example_directory_structure": {
-    "base_directory": "/home/user/organized_documents/",
-    "categories": [
-      {
-        "name": "Financial",
-        "files": [
-          "2023_Budget_Spreadsheet.xlsx"
-        ]
-      },
-      {
-        "name": "Recipes",
-        "files": [
-          "Chocolate_Cake_Recipe.pdf"
-        ]
-      },
-      {
-        "name": "Personal",
-        "files": [
-          "Random_Thoughts_and_Ideas.txt"
-        ]
-      },
-      {
-        "name": "Photos",
-        "files": [
-          "Cityscape_Sunset_May_17_2023.jpg",
-          "Morning_Coffee_Shop_May_16_2023.jpg",
-          "Office_Team_Lunch_May_15_2023.jpg"
-        ]
-      },
-      {
-        "name": "Travel",
-        "files": [
-          "Summer_Vacation_Itinerary_2023.docx"
-        ]
-      },
-      {
-        "name": "Work",
-        "files": [
-          "Project_X_Proposal_Draft.docx",
-          "Quarterly_Sales_Report.pdf",
-          "Marketing_Strategy_Presentation.pptx"
-          "Team_Meeting_Notes_May_15_2023.txt"
-        ]
-      }
-    ]
-  }
-}
+use this as an EXAMPLE for organization:
+-Financial
+    -2023_Budget_Spreadsheet.xlsx
+-Recipes
+    -Chocolate_Cake_Recipe.pdf
+-School
+    -Math_Homework_Solutions.pdf
+    -Research_Paper_Draft.docx
+    -Academic_Journal_Article.pdf
+    -Convolutional_Neural_Networks_Research_Paper.pdf
+-Photos
+    -Cityscape_Sunset_May_17_2023.jpg
+    -Morning_Coffee_Shop_May_16_2023.jpg
+    -Office_Team_Lunch_May_15_2023.jpg
+-Travel
+    -Summer_Vacation_Itinerary_2023.docx
+-Work
+    -Project_X_Proposal_Draft.docx
+    -Quarterly_Sales_Report.pdf
+    -Marketing_Strategy_Presentation.pptx
 
 Your response must be a JSON object with the following schema:
 ```json
@@ -74,11 +56,13 @@ Your response must be a JSON object with the following schema:
     "files": [
         {
             "src_path": "original file path",
-            "dst_path": "new file path under proposed directory structure with proposed file name"
+            "dst_path": "category/filename.ext"
         }
     ]
 }
 ```
+
+IMPORTANT: The dst_path should be RELATIVE paths with just the category folder and filename, NOT absolute paths. Do not include the base directory in dst_path.
 """.strip()
 
 def is_image_file(file_path):
@@ -87,39 +71,46 @@ def is_image_file(file_path):
     return mime_type and mime_type.startswith('image/')
 
 def classify_image(file_path, client):
-    """Classify the contents of an image file using Moondream"""
+    """Classify the contents of an image file using Google ViT model from Hugging Face"""
+    logger.debug(f"Starting image classification for: {file_path}")
     try:
-        # Simpler prompt for better results
-        prompt = "Describe what is shown in this image in a few words."
+        # Load the image
+        logger.debug(f"Loading image: {file_path}")
+        image = Image.open(file_path)
         
-        # Use the client to query Moondream model
-        response = client.chat(
-            model='moondream',
-            messages=[
-                {
-                    "role": "user", 
-                    "content": prompt,
-                    "images": [file_path]
-                }
-            ],
-            options={"num_predict": 256}
-        )
+        # Initialize the ViT model and processor
+        logger.debug("Initializing ViT model and processor")
+        processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
+        model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
         
-        # Just use the plain text response instead of trying to parse JSON
-        description = response['message']['content'].strip()
+        # Process the image and get predictions
+        logger.debug("Processing image and generating predictions")
+        inputs = processor(images=image, return_tensors="pt")
+        outputs = model(**inputs)
+        logits = outputs.logits
+        
+        # Get the predicted class
+        predicted_class_idx = logits.argmax(-1).item()
+        predicted_class = model.config.id2label[predicted_class_idx]
+        logger.debug(f"Predicted class: {predicted_class} (idx: {predicted_class_idx})")
         
         # Format the response
+        description = predicted_class.replace('_', ' ')
+        
+        # Format the response similar to how you did with Moondream
         if description:
-            # Check if the description is very short
-            if len(description) < 5:
-                return f"Image file from {os.path.basename(file_path)}"
-            else:
-                return f"Image containing {description.lower()}"
+            result = f"Image containing {description.lower()}"
+            logger.debug(f"Final classification result: {result}")
+            return result
         else:
-            return f"Image file from {os.path.basename(file_path)}"
+            result = f"Image file from {os.path.basename(file_path)}"
+            logger.debug(f"No valid description, using fallback: {result}")
+            return result
     except Exception as e:
-        print(f"Error classifying image {file_path}: {str(e)}")
-        return f"Image file from {os.path.basename(file_path)}"
+        logger.error(f"Error classifying image {file_path}: {str(e)}", exc_info=True)
+        result = f"Image file from {os.path.basename(file_path)}"
+        logger.debug(f"Using fallback due to error: {result}")
+        return result
 
 def generate_file_name(client, summary, max_length=30):
     """Generate a very concise file name based on the file summary"""
@@ -172,14 +163,33 @@ def generate_file_name(client, summary, max_length=30):
     
     return filename
 
-def get_file_summary(file_path, client):
+def get_file_summary(file_path, client, image_classifier=None):
     """Get summary for a single file"""
+    logger.debug(f"Getting summary for file: {file_path}")
     try:
         if is_image_file(file_path):
-            return classify_image(file_path, client)
+            logger.debug(f"File is an image: {file_path}")
+            if image_classifier:
+                logger.debug("Using provided image classifier from monitor.py")
+                try:
+                    image = Image.open(file_path)
+                    result = image_classifier(image)
+                    label = result[0]['label'].replace('_', ' ')
+                    logger.debug(f"Image classifier result: {label} (score: {result[0]['score']:.4f})")
+                    return f"Image containing {label.lower()}"
+                except Exception as e:
+                    logger.error(f"Error using provided image classifier: {str(e)}", exc_info=True)
+                    logger.debug("Falling back to default classify_image method")
+                    return classify_image(file_path, client)
+            else:
+                logger.debug("Using standard classify_image function")
+                return classify_image(file_path, client)
         else:
+            # Handle text files with logging
+            logger.debug(f"File is a text document: {file_path}")
             text = ""
             if file_path.lower().endswith('.pdf'):
+                logger.debug("Extracting text from PDF file")
                 # Only extract content until we have at least 1000 characters
                 with open(file_path, 'rb') as file:
                     reader = PyPDF2.PdfReader(file)
@@ -192,6 +202,7 @@ def get_file_summary(file_path, client):
                                 text = text[:1000]
                                 break
             else:  # .txt file
+                logger.debug("Reading text file")
                 with open(file_path, 'r', encoding='utf-8') as file:
                     text = file.read(1000)  # Read only the first 1000 characters
             
@@ -246,7 +257,7 @@ Write your response a JSON object with the following schema:
                 print("No text extracted from file.")
                 return None
     except Exception as e:
-        print(f"Error processing {file_path}: {str(e)}")
+        logger.error(f"Error processing {file_path}: {str(e)}", exc_info=True)
         return None
 
 def get_file_hash(file_path):
@@ -606,34 +617,44 @@ def analyze_and_organize_files():
         
 def analyze_directory(directory_path):
     """Analyze the directory and return the file structure data"""
+    logger.info(f"Starting directory analysis: {directory_path}")
+    
     # Initialize Ollama client
+    logger.debug("Initializing Ollama client")
     client = Client(host="http://localhost:11434")
     
     # Initialize lists for files and their summaries
     files_to_process = []
     
     # Walk through directory
+    logger.debug(f"Scanning directory for files: {directory_path}")
     for root, _, files in os.walk(directory_path):
         for file in files:
             file_path = os.path.join(root, file)
             if file.lower().endswith(('.pdf', '.txt')) or is_image_file(file_path):
                 files_to_process.append(file_path)
     
+    logger.info(f"Found {len(files_to_process)} files to process")
+    
     # Check for duplicates
-    print("\nChecking for duplicate files...")
+    logger.debug("Checking for duplicate files")
     file_hashes = {}
     duplicates = {}
     
     for file_path in files_to_process:
         file_hash = get_file_hash(file_path)
         if file_hash in file_hashes:
+            logger.debug(f"Duplicate found: {file_path} matches {file_hashes[file_hash]}")
             if file_hash not in duplicates:
                 duplicates[file_hash] = [file_hashes[file_hash]]
             duplicates[file_hash].append(file_path)
         else:
             file_hashes[file_path] = file_path
     
+    logger.info(f"Found {len(duplicates)} duplicate file sets")
+    
     # Load existing summaries from CSV if it exists
+    logger.debug("Loading cached file summaries")
     summaries_cache = {}
     csv_path = os.path.join(os.getcwd(), "file_summaries_cache.csv")
     if os.path.exists(csv_path):
@@ -653,9 +674,7 @@ def analyze_directory(directory_path):
             print(f"Error loading summaries cache: {str(e)}")
     
     # Analyze files - main functionality
-    print("\nAnalyzing files:")
-    
-    # Store file summaries
+    logger.info("Starting file analysis")
     file_summaries = []
     new_or_updated_summaries = []
     
@@ -722,6 +741,7 @@ def analyze_directory(directory_path):
     
     # Generate file structure if we have summaries
     if file_summaries:
+        logger.info(f"Generating file structure from {len(file_summaries)} file summaries")
         # Convert the file summaries to JSON
         summaries_json = json.dumps(file_summaries, indent=2)
         
@@ -744,6 +764,7 @@ def analyze_directory(directory_path):
         
         return response['message']['content']
     
+    logger.warning("No valid file summaries found, returning empty structure")
     return json.dumps({"files": []})
 
 if __name__ == "__main__":
