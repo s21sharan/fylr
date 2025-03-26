@@ -119,8 +119,12 @@ body {
     position: relative;
   }
   
+  .file-tree li::before {
+    display: none;
+  }
+  
   .file-tree li.file {
-    background-color: #f9f9f9;
+    background-color: #f0f7ff;
     border: 1px solid #e0e0e0;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     cursor: move;
@@ -129,17 +133,40 @@ body {
   }
   
   .file-tree li.file:hover {
-    background-color: #f0f0f0;
     border-color: #ccc;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
   
   .file-tree li.file::before {
-    content: "📄";
+    content: "";
     position: absolute;
     left: 8px;
     top: 50%;
     transform: translateY(-50%);
+  }
+  
+  .file-tree li.file[data-type="image"]::before {
+    content: "🖼️";
+  }
+  
+  .file-tree li.file[data-type="document"]::before {
+    content: "📕";
+  }
+  
+  .file-tree li.file[data-type="image"] {
+    padding-left: 30px;
+  }
+  
+  .file-tree li.file[data-type="image"]::after {
+    display: none;
+  }
+  
+  .file-tree li.file:not([data-type="image"]) {
+    padding-left: 30px;
+  }
+  
+  .file-tree li.file:not([data-type="image"])::after {
+    display: none;
   }
   
   .file-tree li.folder {
@@ -193,19 +220,6 @@ body {
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
   }
   
-  .file-tree li::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -10px;
-    height: 100%;
-    border-left: 1px solid #ddd;
-  }
-  
-  .file-tree li:last-child::before {
-    height: 50%;
-  }
-  
   .file-tree li::after {
     content: "";
     position: absolute;
@@ -215,43 +229,36 @@ body {
     border-top: 1px solid #ddd;
   }
   
+  .folder {
+    position: relative;
+    padding-right: 25px;
+  }
+  
   .folder-actions {
-    float: right;
     position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 5;
+    top: 5px;
+    right: 5px;
+    opacity: 0;
+    transition: opacity 0.2s;
   }
   
-  li.folder .folder-actions {
-    opacity: 0.6;
-  }
-  
-  li.folder:hover .folder-actions {
+  .folder:hover .folder-actions {
     opacity: 1;
   }
   
-  .folder-actions button {
-    background-color: rgba(255, 255, 255, 0.7);
-    border: 1px solid #e0e0e0;
-    border-radius: 50%;
+  .remove-dir {
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    color: #666;
     cursor: pointer;
-    font-size: 12px;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #888;
-    transition: all 0.2s;
+    font-size: 14px;
+    transition: color 0.2s;
   }
   
-  .folder-actions button:hover {
-    color: #d9534f;
-    background-color: white;
-    border-color: #d9534f;
-    transform: scale(1.1);
+  .remove-dir:hover {
+    color: #ff4444;
+    background: none;
   }
   
   .button-bar {

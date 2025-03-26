@@ -179,9 +179,13 @@ function buildFileTree(data) {
       const li = document.createElement('li');
       li.className = 'file';
       
-      // Add file icon based on extension
-      const fileIcon = getFileIcon(file.fileName);
-      li.innerHTML = `<span class="file-icon">${fileIcon}</span> ${file.fileName}`;
+      // Set the data-type attribute based on file extension
+      const isImage = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i.test(file.fileName);
+      const isPdf = file.fileName.toLowerCase().endsWith('.pdf');
+      li.setAttribute('data-type', isImage ? 'image' : (isPdf ? 'document' : 'other'));
+      
+      // Remove the file icon span since we're using CSS ::before
+      li.textContent = file.fileName;
       
       li.title = `Original: ${file.originalPath}\nNew: ${file.newPath}`;
       li.setAttribute('data-src', file.originalPath);
@@ -207,8 +211,7 @@ function buildFileTree(data) {
     folderActions.className = 'folder-actions';
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-dir';
-    removeBtn.innerHTML = '✖';
-    removeBtn.title = 'Remove Directory';
+    removeBtn.innerHTML = '×';
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeDirectory(dirLi);
@@ -227,9 +230,13 @@ function buildFileTree(data) {
       const fileLi = document.createElement('li');
       fileLi.className = 'file';
       
-      // Add file icon based on extension
-      const fileIcon = getFileIcon(file.fileName);
-      fileLi.innerHTML = `<span class="file-icon">${fileIcon}</span> ${file.fileName}`;
+      // Set the data-type attribute based on file extension
+      const isImage = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i.test(file.fileName);
+      const isPdf = file.fileName.toLowerCase().endsWith('.pdf');
+      fileLi.setAttribute('data-type', isImage ? 'image' : (isPdf ? 'document' : 'other'));
+      
+      // Remove the file icon span since we're using CSS ::before
+      fileLi.textContent = file.fileName;
       
       fileLi.title = `Original: ${file.originalPath}\nNew: ${file.newPath}`;
       fileLi.setAttribute('data-src', file.originalPath);
@@ -442,8 +449,7 @@ function addNewDirectory(dirName) {
   folderActions.className = 'folder-actions';
   const removeBtn = document.createElement('button');
   removeBtn.className = 'remove-dir';
-  removeBtn.innerHTML = '✖';
-  removeBtn.title = 'Remove Directory';
+  removeBtn.innerHTML = '×';
   removeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     removeDirectory(dirLi);
@@ -520,35 +526,7 @@ function removeDirectory(dirElement) {
   }, 300);
 }
 
-// Add file icons based on file type
+// Remove or simplify the getFileIcon function since it's no longer needed
 function getFileIcon(fileName) {
-  const extension = fileName.split('.').pop().toLowerCase();
-  
-  // Map file extensions to appropriate emoji icons
-  const iconMap = {
-    'pdf': '📕',
-    'doc': '📘',
-    'docx': '📘',
-    'txt': '📝',
-    'jpg': '🖼️',
-    'jpeg': '🖼️',
-    'png': '🖼️',
-    'gif': '🖼️',
-    'mp3': '🎵',
-    'mp4': '🎬',
-    'xls': '📊',
-    'xlsx': '📊',
-    'ppt': '📊',
-    'pptx': '📊',
-    'zip': '🗜️',
-    'rar': '🗜️',
-    'csv': '📊',
-    'json': '📋',
-    'xml': '📋',
-    'html': '🌐',
-    'css': '🌐',
-    'js': '📜'
-  };
-  
-  return iconMap[extension] || '📄';
+  return ''; // Return empty string since we're using CSS for icons
 }
