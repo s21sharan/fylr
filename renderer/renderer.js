@@ -14,6 +14,10 @@ const expandAllBtn = document.getElementById('expandAllBtn');
 const collapseAllBtn = document.getElementById('collapseAllBtn');
 const resetBtn = document.getElementById('resetBtn');
 
+// Add at the beginning of the file after existing DOM elements
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
 // Store file structure data
 let fileStructureData = null;
 
@@ -63,40 +67,19 @@ browseBtn.addEventListener('click', async () => {
   }
 });
 
-analyzeBtn.addEventListener('click', async () => {
-  const directoryPath = directoryInput.value;
-  if (!directoryPath) return;
-  
-  debugLog(`Starting analysis for directory: ${directoryPath}`);
-  
-  // Show loader
-  loader.style.display = 'flex';
-  resultsContainer.style.display = 'none';
-  messageContainer.innerHTML = '';
-  
-  try {
-    // Call backend to analyze directory
-    debugLog("Calling IPC to analyze directory");
-    
-    const startTime = performance.now();
-    fileStructureData = await ipcRenderer.invoke('analyze-directory', directoryPath);
-    const endTime = performance.now();
-    
-    debugLog(`Analysis completed in ${(endTime - startTime) / 1000} seconds`);
-    debugLog("File structure data received:", fileStructureData);
-    
-    // Build the file tree visualization
-    debugLog("Building file tree visualization");
-    buildFileTree(fileStructureData);
-    
-    // Hide loader and show results
-    loader.style.display = 'none';
-    resultsContainer.style.display = 'block';
-    debugLog("UI updated to show results");
-  } catch (error) {
-    debugLog("Error during analysis:", error);
-    loader.style.display = 'none';
-    showMessage(`Error analyzing directory: ${error.message}`, 'error');
+analyzeBtn.addEventListener('click', () => {
+  validateAndAnalyzeDirectory(directoryInput.value.trim());
+});
+
+// Add input event listener to enable/disable analyze button
+directoryInput.addEventListener('input', () => {
+  analyzeBtn.disabled = !directoryInput.value.trim();
+});
+
+// Add keypress event listener for Enter key
+directoryInput.addEventListener('keypress', (event) => {
+  if (event.key === 'Enter' && directoryInput.value.trim()) {
+    validateAndAnalyzeDirectory(directoryInput.value.trim());
   }
 });
 
@@ -531,4 +514,60 @@ function removeDirectory(dirElement) {
 // Remove or simplify the getFileIcon function since it's no longer needed
 function getFileIcon(fileName) {
   return ''; // Return empty string since we're using CSS for icons
+}
+
+// Add tab switching functionality
+tabButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    // Remove active class from all buttons and contents
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabContents.forEach(content => content.classList.remove('active'));
+    
+    // Add active class to clicked button and corresponding content
+    button.classList.add('active');
+    const tabId = button.getAttribute('data-tab');
+    document.getElementById(tabId).classList.add('active');
+  });
+});
+
+// Add validation and analysis function
+async function validateAndAnalyzeDirectory(path) {
+  if (!path) return;
+  
+  try {
+    // First validate if the directory exists
+    const isValid = await ipcRenderer.invoke('validate-directory', path);
+    
+    if (!isValid) {
+      showMessage('Please enter a valid directory path', 'error');
+      return;
+    }
+    
+    // Show loader
+    loader.style.display = 'flex';
+    resultsContainer.style.display = 'none';
+    messageContainer.innerHTML = '';
+    
+    debugLog(`Starting analysis for directory: ${path}`);
+    
+    // Call backend to analyze directory
+    const startTime = performance.now();
+    fileStructureData = await ipcRenderer.invoke('analyze-directory', path);
+    const endTime = performance.now();
+    
+    debugLog(`Analysis completed in ${(endTime - startTime) / 1000} seconds`);
+    debugLog("File structure data received:", fileStructureData);
+    
+    // Build the file tree visualization
+    buildFileTree(fileStructureData);
+    
+    // Hide loader and show results
+    loader.style.display = 'none';
+    resultsContainer.style.display = 'block';
+    
+  } catch (error) {
+    debugLog("Error during analysis:", error);
+    loader.style.display = 'none';
+    showMessage(`Error analyzing directory: ${error.message}`, 'error');
+  }
 }

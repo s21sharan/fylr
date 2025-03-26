@@ -1,7 +1,7 @@
 {
-  "name": "file-organizer",
+  "name": "fylr",
   "version": "1.0.0",
-  "description": "File organization tool with Electron front-end",
+  "description": "Intelligent file organization system",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -18,7 +18,8 @@
     "electron-builder": "^23.6.0"
   },
   "build": {
-    "appId": "com.yourname.file-organizer",
+    "appId": "com.yourname.fylr",
+    "productName": "Fylr",
     "extraFiles": [
       {
         "from": "backend",
