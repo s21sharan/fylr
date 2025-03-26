@@ -138,19 +138,15 @@ body {
   }
   
   .file-tree li.file::before {
-    content: "";
-    position: absolute;
-    left: 8px;
-    top: 50%;
-    transform: translateY(-50%);
+    display: none;
   }
   
   .file-tree li.file[data-type="image"]::before {
-    content: "🖼️";
+    display: none;
   }
   
   .file-tree li.file[data-type="document"]::before {
-    content: "📕";
+    display: none;
   }
   
   .file-tree li.file[data-type="image"] {

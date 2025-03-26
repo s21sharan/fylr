@@ -184,8 +184,9 @@ function buildFileTree(data) {
       const isPdf = file.fileName.toLowerCase().endsWith('.pdf');
       li.setAttribute('data-type', isImage ? 'image' : (isPdf ? 'document' : 'other'));
       
-      // Remove the file icon span since we're using CSS ::before
-      li.textContent = file.fileName;
+      // Add icon and filename
+      const icon = isImage ? '🖼️' : (isPdf ? '📕' : '');
+      li.innerHTML = `${icon} ${file.fileName}`;
       
       li.title = `Original: ${file.originalPath}\nNew: ${file.newPath}`;
       li.setAttribute('data-src', file.originalPath);
@@ -235,8 +236,9 @@ function buildFileTree(data) {
       const isPdf = file.fileName.toLowerCase().endsWith('.pdf');
       fileLi.setAttribute('data-type', isImage ? 'image' : (isPdf ? 'document' : 'other'));
       
-      // Remove the file icon span since we're using CSS ::before
-      fileLi.textContent = file.fileName;
+      // Add icon and filename
+      const icon = isImage ? '🖼️' : (isPdf ? '📕' : '');
+      fileLi.innerHTML = `${icon} ${file.fileName}`;
       
       fileLi.title = `Original: ${file.originalPath}\nNew: ${file.newPath}`;
       fileLi.setAttribute('data-src', file.originalPath);
