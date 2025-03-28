@@ -193,3 +193,44 @@ ipcMain.handle('apply-changes', async (event, fileStructure) => {
     });
   });
 });
+
+// Check if test.json exists in the project root directory
+ipcMain.handle('check-test-json', async (event) => {
+  const testJsonPath = path.join(__dirname, 'test.json');
+  debug(`Checking for test.json at: ${testJsonPath}`);
+  return fs.existsSync(testJsonPath);
+});
+
+// Read test.json from the project root directory
+ipcMain.handle('read-test-json', async (event) => {
+  const testJsonPath = path.join(__dirname, 'test.json');
+  try {
+    debug(`Reading test.json from: ${testJsonPath}`);
+    const data = fs.readFileSync(testJsonPath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    debug(`Error reading test.json: ${error.message}`);
+    throw new Error(`Failed to read test.json: ${error.message}`);
+  }
+});
+ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) => {
+  try {
+    const { default: fetch } = await import('node-fetch');
+
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mistral',
+        prompt: `Organize the following files:\n${JSON.stringify(currentFileStructure)}\n\nUser instruction: ${message}`,
+        stream: false
+      })
+    });
+
+    const data = await response.json();
+    return { response: data.response };
+  } catch (err) {
+    console.error('Error in chat-query handler:', err);
+    return { error: err.message };
+  }
+});

@@ -48,6 +48,13 @@ const newDirNameInput = document.getElementById('newDirName');
 const cancelAddDirBtn = document.getElementById('cancelAddDir');
 const confirmAddDirBtn = document.getElementById('confirmAddDir');
 
+// Chat feature elements
+const chatToggleBtn = document.getElementById('chatToggleBtn');
+const chatInterface = document.getElementById('chatInterface');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const chatSendBtn = document.getElementById('chatSendBtn');
+
 function debugLog(message, data) {
   if (DEBUG) {
     if (data) {
@@ -550,12 +557,24 @@ async function validateAndAnalyzeDirectory(path) {
     
     debugLog(`Starting analysis for directory: ${path}`);
     
-    // Call backend to analyze directory
-    const startTime = performance.now();
-    fileStructureData = await ipcRenderer.invoke('analyze-directory', path);
+    // Check if test.json exists in the project root directory
+    const testJsonExists = await ipcRenderer.invoke('check-test-json');
+    
+    let startTime = performance.now();
+    
+    if (testJsonExists) {
+      // Use test.json instead of running analysis
+      debugLog('Found test.json in project root, using it instead of running full analysis');
+      fileStructureData = await ipcRenderer.invoke('read-test-json');
+    } else {
+      // Call backend to analyze directory as normal
+      debugLog('No test.json found in project root, running full analysis');
+      fileStructureData = await ipcRenderer.invoke('analyze-directory', path);
+    }
+    
     const endTime = performance.now();
     
-    debugLog(`Analysis completed in ${(endTime - startTime) / 1000} seconds`);
+    debugLog(`Process completed in ${(endTime - startTime) / 1000} seconds`);
     debugLog("File structure data received:", fileStructureData);
     
     // Build the file tree visualization
@@ -569,5 +588,97 @@ async function validateAndAnalyzeDirectory(path) {
     debugLog("Error during analysis:", error);
     loader.style.display = 'none';
     showMessage(`Error analyzing directory: ${error.message}`, 'error');
+  }
+}
+
+// Toggle chat interface
+chatToggleBtn.addEventListener('click', () => {
+  chatInterface.classList.toggle('hidden');
+  if (!chatInterface.classList.contains('hidden')) {
+    chatInput.focus();
+  }
+});
+
+// Send message when clicking the send button
+chatSendBtn.addEventListener('click', sendChatMessage);
+
+// Send message when pressing Enter
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    sendChatMessage();
+  }
+});
+
+// Function to send a message and get a response
+async function sendChatMessage() {
+  const message = chatInput.value.trim();
+  if (!message) return;
+  
+  // Add user message to chat
+  addMessageToChat(message, 'user');
+  chatInput.value = '';
+  
+  // Show thinking indicator
+  const thinkingId = addThinkingIndicator();
+  
+  try {
+    // Send to backend and get response
+    const response = await ipcRenderer.invoke('chat-query', {
+      message: message,
+      currentFileStructure: currentStructure
+    });
+    
+    // Remove thinking indicator
+    removeThinkingIndicator(thinkingId);
+    
+    // Add assistant response
+    addMessageToChat(response.message, 'assistant');
+    
+    // Update file structure if needed
+    if (response.updatedFileStructure) {
+      currentStructure = response.updatedFileStructure;
+      buildFileTree(currentStructure);
+      showMessage('File structure updated based on your request', 'success');
+    }
+  } catch (error) {
+    // Remove thinking indicator
+    removeThinkingIndicator(thinkingId);
+    
+    // Show error message
+    addMessageToChat('Sorry, I encountered an error processing your request. Please try again.', 'assistant');
+    console.error('Chat error:', error);
+  }
+}
+
+// Add a message to the chat interface
+function addMessageToChat(message, sender) {
+  const messageElement = document.createElement('div');
+  messageElement.classList.add('chat-message');
+  messageElement.classList.add(sender + '-message');
+  messageElement.textContent = message;
+  
+  chatMessages.appendChild(messageElement);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Add thinking indicator
+function addThinkingIndicator() {
+  const id = 'thinking-' + Date.now();
+  const thinkingElement = document.createElement('div');
+  thinkingElement.id = id;
+  thinkingElement.classList.add('chat-message', 'assistant-message');
+  thinkingElement.textContent = 'Thinking...';
+  
+  chatMessages.appendChild(thinkingElement);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  return id;
+}
+
+// Remove thinking indicator
+function removeThinkingIndicator(id) {
+  const thinkingElement = document.getElementById(id);
+  if (thinkingElement) {
+    thinkingElement.remove();
   }
 }

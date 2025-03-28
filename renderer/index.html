@@ -48,6 +48,21 @@
           <button id="resetBtn">Reset to Original</button>
           <button id="applyBtn">Apply Changes</button>
         </div>
+        
+        <!-- Chat feature -->
+        <div class="chat-container">
+          <button id="chatToggleBtn" class="chat-toggle-btn">
+            <span class="chat-icon">💬</span>
+            <span class="chat-label">Chat Assistant</span>
+          </button>
+          <div id="chatInterface" class="chat-interface hidden">
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input-container">
+              <input type="text" id="chatInput" placeholder="Ask how to organize your files...">
+              <button id="chatSendBtn">Send</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
