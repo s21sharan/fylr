@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { PythonShell } = require('python-shell');
 const fs = require('fs');
-const { getPythonPath } = require('./find_python.js');
 
 let mainWindow;
 
@@ -24,8 +23,9 @@ function createWindow() {
     height: 800,
     title: 'Fylr',
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -55,32 +55,54 @@ ipcMain.handle('validate-directory', async (event, dirPath) => {
 
 // Existing directory selection handler
 ipcMain.handle('select-directory', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory']
-  });
-  
-  if (!result.canceled) {
-    return result.filePaths[0];
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Directory to Organize',
+      buttonLabel: 'Select Folder'
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return null;
+  } catch (error) {
+    console.error('Error selecting directory:', error);
+    throw error;
   }
-  return null;
 });
 
-// Run Python script to analyze directory
-ipcMain.handle('analyze-directory', async (event, directoryPath) => {
-  debug(`Starting directory analysis: ${directoryPath}`);
+// Function to get Python path based on the environment
+function getPythonPath() {
+  // First check for virtual environment
+  const venvPath = path.join(__dirname, 'venv');
+  const pythonPath = process.platform === 'win32' 
+    ? path.join(venvPath, 'Scripts', 'python.exe')
+    : path.join(venvPath, 'bin', 'python');
+    
+  if (fs.existsSync(pythonPath)) {
+    return pythonPath;
+  }
+  
+  // Fallback to system Python
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+// Function to analyze directory using Python script
+async function analyzeDirectory(directory, specificity) {
   return new Promise((resolve, reject) => {
-    // Create a temporary JSON file to pass the directory path to Python
+    // Create a temporary JSON file to pass the configuration to Python
     const configPath = path.join(app.getPath('temp'), 'file_organizer_config.json');
-    debug(`Creating config file at: ${configPath}`);
-    fs.writeFileSync(configPath, JSON.stringify({ directory: directoryPath }));
+    fs.writeFileSync(configPath, JSON.stringify({ 
+      directory: directory,
+      specificity: specificity 
+    }));
     
     // Path to Python script
     const scriptPath = path.join(__dirname, 'backend', 'initial_organize_electron.py');
-    debug(`Using Python script: ${scriptPath}`);
     
-    // Get the path to the virtual environment's Python executable
+    // Get the path to the Python executable
     const pythonPath = getPythonPath();
-    debug(`Using Python interpreter: ${pythonPath}`);
     
     const options = {
       mode: 'text',
@@ -89,21 +111,15 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
       args: [configPath]
     };
     
-    debug('Starting Python process with options', options);
     PythonShell.run(scriptPath, options, (err, results) => {
       if (err) {
         console.error('Python script error:', err);
-        debug('Python execution failed with error', err);
         reject(err);
         return;
       }
       
-      debug(`Python script execution completed with ${results.length} lines of output`);
-      
-      // The last line of output should be the file structure JSON
       try {
         // Find the JSON output (the line after RAW LLM RESPONSE)
-        debug('Processing Python output to find JSON response');
         let jsonOutput = '';
         let foundRawLLMResponse = false;
         
@@ -113,54 +129,47 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
           }
           if (line.includes('RAW LLM RESPONSE:')) {
             foundRawLLMResponse = true;
-            debug('Found LLM response marker in output');
           }
         }
-        
-        debug('Attempting to parse JSON output');
-        debug('JSON content to parse:', jsonOutput.substring(0, 500) + '...');
         
         // Extract JSON using a more robust approach
         const jsonRegex = /{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*}/g;
         const matches = jsonOutput.match(jsonRegex);
         
         if (matches && matches.length > 0) {
-          debug(`Found ${matches.length} potential JSON matches`);
           // Try each potential JSON match until one parses successfully
-          let result = null;
           for (const match of matches) {
             try {
-              debug('Trying to parse JSON match', match.substring(0, 100) + '...');
-              result = JSON.parse(match);
+              const result = JSON.parse(match);
               if (result) {
-                debug('Successfully parsed JSON data');
-                break;
+                resolve(result);
+                return;
               }
             } catch (e) {
-              debug(`Failed to parse potential JSON match: ${e.message}`);
               // Continue to next match
+              console.log('Failed to parse JSON match:', e);
             }
           }
-          
-          if (result) {
-            debug('Returning parsed result structure', result);
-            resolve(result);
-          } else {
-            debug('No valid JSON structures found');
-            throw new Error('None of the extracted JSON structures were valid');
-          }
-        } else {
-          debug('No JSON patterns found in output');
-          throw new Error('Could not find valid JSON structure in Python output');
         }
+        
+        reject(new Error('Could not find valid JSON structure in Python output'));
       } catch (error) {
         console.error('Error parsing Python output:', error);
-        debug('Error parsing output', error);
-        debug('Raw output:', results.join('\n'));
         reject(error);
       }
     });
   });
+}
+
+// Handle directory analysis request
+ipcMain.handle('analyze-directory', async (event, { directory, specificity }) => {
+  try {
+    const result = await analyzeDirectory(directory, specificity);
+    return JSON.stringify(result);
+  } catch (error) {
+    console.error('Error analyzing directory:', error);
+    throw error;
+  }
 });
 
 // Apply changes

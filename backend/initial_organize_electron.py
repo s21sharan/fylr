@@ -25,7 +25,12 @@ You will be provided with list of source files and a summary of their contents. 
 Follow good naming conventions.
 
 - Group files by content type into categories such as "images", "recipes", "travel", "school", "work", "home", etc.
-- try to group as many files as you can into the same category
+- The specificity level (1-5) determines how detailed the categorization should be:
+  - Level 1: Very broad categories (e.g., "Documents", "Images", "Videos")
+  - Level 2: Basic categories (e.g., "Work", "Personal", "School")
+  - Level 3: Standard categories (e.g., "Financial", "Recipes", "Travel")
+  - Level 4: Detailed categories (e.g., "Tax_Documents", "Dessert_Recipes", "Vacation_Photos")
+  - Level 5: Very specific categories (e.g., "2023_Tax_Returns", "Chocolate_Cake_Recipes", "Paris_Vacation_2023")
 - Use EXACTLY ONE level of nesting in the directory structure. No subfolders allowed.
 - All files must be placed directly into their category folder without any additional subfolder structure.
 
@@ -269,32 +274,38 @@ def get_file_hash(file_path):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
-def generate_file_structure(file_summaries, client):
+def generate_file_structure(file_summaries, client, specificity=3):
     """Generate a proposed file structure based on file summaries"""
     try:
         # Convert the file summaries to JSON
         summaries_json = json.dumps(file_summaries, indent=2)
         
-        # Print what we're sending to Mistral
-        print("\n" + "=" * 50)
-        print("GENERATING FILE STRUCTURE FROM SUMMARIES:")
-        print("=" * 50)
+        # Create a more detailed specificity instruction based on the level
+        level_instructions = {
+            1: "LEVEL 1 (BROADEST):\n- Use ONLY these categories: Documents, Images, Videos, Audio\n- Force all files into these broad categories\n- No subcategories allowed",
+            2: "LEVEL 2 (BASIC):\n- Use 8-10 basic categories like Work, Personal, School\n- Group by general purpose\n- Combine similar items",
+            3: "LEVEL 3 (STANDARD):\n- Use 12-15 standard categories\n- Balance between broad and specific\n- Categories like Financial, Recipes, Travel",
+            4: "LEVEL 4 (DETAILED):\n- Use 15-20 detailed categories\n- Separate distinct content types\n- More specific naming like Tax_Documents, Project_Files",
+            5: "LEVEL 5 (MOST SPECIFIC):\n- Use highly specific categories\n- Include dates, types, or contexts\n- No limit on number of categories\n- Maximum detail in naming"
+        }
         
-        # Print the prompt and data being sent to the LLM
-        print("PROMPT:")
-        print(FILE_PROMPT)
-        print("\nDATA:")
-        print(summaries_json)
-        print("=" * 50)
+        specificity_prompt = f"""
+SPECIFICITY LEVEL: {specificity}
+
+{level_instructions.get(specificity, level_instructions[3])}
+
+You MUST follow these specificity rules strictly when organizing the files.
+Failing to follow these rules will result in incorrect organization.
+"""
         
         # Send to Mistral and get proposed structure
         response = client.chat(
             model='mistral',
             messages=[
                 {"role": "system", "content": FILE_PROMPT},
-                {"role": "user", "content": summaries_json}
+                {"role": "user", "content": specificity_prompt + "\n\n" + summaries_json}
             ],
-            options={"temperature": 0, "num_predict": 2048}  # Increased token limit for complex structures
+            options={"temperature": 0, "num_predict": 2048}
         )
         
         # Get the response content
@@ -302,24 +313,31 @@ def generate_file_structure(file_summaries, client):
         
         # Try to parse the JSON response
         try:
-            # Extract JSON from the response
-            json_start = response_content.find('{')
-            json_end = response_content.rfind('}') + 1
-            if json_start >= 0 and json_end > json_start:
-                json_str = response_content[json_start:json_end]
-                result = json.loads(json_str)
-                return result["files"]
+            # Extract JSON from the response (handle both full JSON and embedded JSON cases)
+            if response_content.startswith('{'):
+                # If it's already valid JSON
+                result = json.loads(response_content)
             else:
-                print("Error: Could not find valid JSON in response")
-                print(response_content)
-                return None
+                # Try to extract JSON from the text
+                json_start = response_content.find('{')
+                json_end = response_content.rfind('}')
+                if json_start >= 0 and json_end > json_start:
+                    json_str = response_content[json_start:json_end + 1]
+                    result = json.loads(json_str)
+                else:
+                    print("Error: Could not find valid JSON in response")
+                    return []
+            
+            return result.get("files", [])
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON response: {str(e)}")
+            return []
         except Exception as e:
-            print(f"Error parsing response: {str(e)}")
-            print(response_content)
-            return None
+            print(f"Unexpected error: {str(e)}")
+            return []
     except Exception as e:
         print(f"Error generating file structure: {str(e)}")
-        return None
+        return []
 
 def display_file_structure(file_structure):
     """Display the file structure in a readable tree format"""
@@ -382,394 +400,60 @@ def display_file_structure(file_structure):
             else:
                 print(f"{prefix}├── 📄 {file_info['filename']}")
 
-def analyze_and_organize_files():
-    # Ask user for directory path
-    directory = input("Please enter the directory path: ").strip()
-    
-    # Check if directory exists
-    if not os.path.isdir(directory):
-        print("Error: Directory does not exist!")
-        return
-    
-    # Initialize Ollama client
-    client = Client(host="http://localhost:11434")
-    
-    # Initialize lists for files and their summaries
-    files_to_process = []
-    
-    # Walk through directory
-    for root, _, files in os.walk(directory):
-        for file in files:
-            file_path = os.path.join(root, file)
-            if file.lower().endswith(('.pdf', '.txt')) or is_image_file(file_path):
-                files_to_process.append(file_path)
-    
-    # Check for duplicates
-    print("\nChecking for duplicate files...")
-    file_hashes = {}
-    duplicates = {}
-    
-    for file_path in files_to_process:
-        file_hash = get_file_hash(file_path)
-        if file_hash in file_hashes:
-            if file_hash not in duplicates:
-                duplicates[file_hash] = [file_hashes[file_hash]]
-            duplicates[file_hash].append(file_path)
-        else:
-            file_hashes[file_path] = file_path
-    
-    # Handle duplicates if found
-    if duplicates:
-        print("\nDuplicate files found:")
-        for file_hash, duplicate_files in duplicates.items():
-            print("\nDuplicate set:")
-            for i, file_path in enumerate(duplicate_files, 1):
-                print(f"{i}. {file_path}")
+def analyze_directory(directory, specificity=3):
+    """Analyze and organize files in the given directory"""
+    try:
+        # Initialize Ollama client
+        client = Client(host="http://localhost:11434")
         
-        response = input("\nWould you like to remove duplicate files? (y/n): ").lower()
-        if response == 'y':
-            for file_hash, duplicate_files in duplicates.items():
-                print(f"\nDuplicate set:")
-                for i, file_path in enumerate(duplicate_files, 1):
-                    print(f"{i}. {file_path}")
-                keep_index = int(input("Enter the number of the file to keep (others will be removed): ")) - 1
-                
-                # Remove all files except the one to keep
-                for i, file_path in enumerate(duplicate_files):
-                    if i != keep_index:
-                        try:
-                            os.remove(file_path)
-                            print(f"Removed: {file_path}")
-                            # Remove from files_to_process
-                            files_to_process.remove(file_path)
-                        except Exception as e:
-                            print(f"Error removing {file_path}: {str(e)}")
-    
-    # Load existing summaries from CSV if it exists
-    summaries_cache = {}
-    csv_path = os.path.join(os.getcwd(), "file_summaries_cache.csv")
-    if os.path.exists(csv_path):
-        try:
-            with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    # Store with file hash as key
-                    summaries_cache[row['file_hash']] = {
-                        'summary': row['summary'],
-                        'file_path': row['file_path'],
-                        'last_modified': float(row['last_modified'])
-                    }
-            print(f"Loaded {len(summaries_cache)} cached file summaries.")
-        except Exception as e:
-            print(f"Error loading summaries cache: {str(e)}")
-    
-    # Analyze files - main functionality
-    print("\nAnalyzing files:")
-    
-    # Store file summaries
-    file_summaries = []
-    new_or_updated_summaries = []
-    
-    for file_path in files_to_process:
-        print(f"\nAnalyzing: {file_path}")
+        # Initialize lists for files and their summaries
+        files_to_process = []
         
-        # Calculate file hash and get last modified time
-        file_hash = get_file_hash(file_path)
-        last_modified = os.path.getmtime(file_path)
+        # Walk through directory
+        for root, _, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file.lower().endswith(('.pdf', '.txt')) or is_image_file(file_path):
+                    files_to_process.append(file_path)
         
-        # Check if we have a cached summary for this file hash 
-        # and if the file hasn't been modified since
-        use_cached = False
-        if file_hash in summaries_cache:
-            cached_entry = summaries_cache[file_hash]
-            if float(cached_entry['last_modified']) >= last_modified:
-                summary = cached_entry['summary']
-                print(f"Using cached summary")
-                use_cached = True
-            
-        # If not in cache or file was modified, generate a new summary
-        if not use_cached:
-            summary = get_file_summary(file_path, client)
-            if summary:
-                # Add to new/updated summaries list for CSV update
-                new_or_updated_summaries.append({
-                    'file_hash': file_hash,
-                    'file_path': file_path,
-                    'summary': summary,
-                    'last_modified': last_modified
-                })
-        
-        if summary:
-            # Print summary immediately after analyzing each file
-            print(f"Summary: {summary}")
-            
-            # Generate a filename based on the summary
-            suggested_filename = generate_file_name(client, summary)
-            print(f"Suggested filename: {suggested_filename}")
-            print("-" * 50)
-            
-            # Store the file summary
-            file_summaries.append({
-                "file_path": file_path,
-                "summary": summary
-            })
-    
-    # Update the CSV cache with new or updated summaries
-    if new_or_updated_summaries:
-        try:
-            # Create or append to the CSV file
-            file_exists = os.path.exists(csv_path)
-            
-            with open(csv_path, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['file_hash', 'file_path', 'summary', 'last_modified']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                
-                # Write header if file doesn't exist
-                if not file_exists:
-                    writer.writeheader()
-                
-                # Write new or updated entries
-                for entry in new_or_updated_summaries:
-                    writer.writerow(entry)
-            
-            print(f"Updated cache with {len(new_or_updated_summaries)} new or modified file summaries.")
-        except Exception as e:
-            print(f"Error updating summaries cache: {str(e)}")
-    
-    # Generate file structure if we have summaries
-    if file_summaries:
-        # Convert the file summaries to JSON
-        summaries_json = json.dumps(file_summaries, indent=2)
-        
-        # Print what we're sending to Mistral
-        print("\n" + "=" * 50)
-        print("GENERATING FILE STRUCTURE FROM SUMMARIES:")
-        print("=" * 50)
-        
-        # Print the prompt and data being sent to the LLM
-        print("PROMPT:")
-        print(FILE_PROMPT)
-        print("\nDATA:")
-        print(summaries_json)
-        print("=" * 50)
-        
-        # Send to Mistral and get raw response
-        response = client.chat(
-            model='mistral',
-            messages=[
-                {"role": "system", "content": FILE_PROMPT},
-                {"role": "user", "content": summaries_json}
-            ],
-            options={"temperature": 0, "num_predict": 2048}
-        )
-        
-        # Print the raw response
-        print("\n" + "=" * 50)
-        print("RAW LLM RESPONSE:")
-        print("=" * 50)
-        print(response['message']['content'])
-        print("=" * 50)
-        
-        # Parse the response to get file structure
-        response_content = response['message']['content'].strip()
-        file_structure = None
-        
-        try:
-            # Extract JSON from the response
-            json_start = response_content.find('{')
-            json_end = response_content.rfind('}') + 1
-            if json_start >= 0 and json_end > json_start:
-                json_str = response_content[json_start:json_end]
-                result = json.loads(json_str)
-                file_structure = result["files"]
-        except Exception as e:
-            print(f"Error parsing response: {str(e)}")
-            print("Failed to generate file structure proposal.")
+        if not files_to_process:
+            print("\nRAW LLM RESPONSE:")
+            print(json.dumps({"files": [], "error": None}))
             return
         
-        # Ask if user wants to apply changes
-        if file_structure:
-            response = input("\nWould you like to apply these changes? (y/n): ").lower()
-            if response == 'y':
-                # Apply the changes
-                for file_info in file_structure:
-                    src_path = file_info['src_path']
-                    dst_path = file_info['dst_path']
-                    
-                    # Create destination directory if it doesn't exist
-                    dst_dir = os.path.dirname(dst_path)
-                    os.makedirs(dst_dir, exist_ok=True)
-                    
-                    # Move and rename file
-                    try:
-                        os.rename(src_path, dst_path)
-                        print(f"Moved: {os.path.basename(src_path)} -> {dst_path}")
-                    except Exception as e:
-                        print(f"Error moving {os.path.basename(src_path)}: {str(e)}")
-                
-                print("Files have been reorganized according to the proposed structure.")
-            else:
-                print("No changes were made.")
-        else:
-            print("Failed to generate file structure proposal.")
-    else:
-        print("No files were successfully processed")
+        # Store file summaries
+        file_summaries = []
         
-def analyze_directory(directory_path):
-    """Analyze the directory and return the file structure data"""
-    logger.info(f"Starting directory analysis: {directory_path}")
-    
-    # Initialize Ollama client
-    logger.debug("Initializing Ollama client")
-    client = Client(host="http://localhost:11434")
-    
-    # Initialize lists for files and their summaries
-    files_to_process = []
-    
-    # Walk through directory
-    logger.debug(f"Scanning directory for files: {directory_path}")
-    for root, _, files in os.walk(directory_path):
-        for file in files:
-            file_path = os.path.join(root, file)
-            if file.lower().endswith(('.pdf', '.txt')) or is_image_file(file_path):
-                files_to_process.append(file_path)
-    
-    logger.info(f"Found {len(files_to_process)} files to process")
-    
-    # Check for duplicates
-    logger.debug("Checking for duplicate files")
-    file_hashes = {}
-    duplicates = {}
-    
-    for file_path in files_to_process:
-        file_hash = get_file_hash(file_path)
-        if file_hash in file_hashes:
-            logger.debug(f"Duplicate found: {file_path} matches {file_hashes[file_hash]}")
-            if file_hash not in duplicates:
-                duplicates[file_hash] = [file_hashes[file_hash]]
-            duplicates[file_hash].append(file_path)
-        else:
-            file_hashes[file_path] = file_path
-    
-    logger.info(f"Found {len(duplicates)} duplicate file sets")
-    
-    # Load existing summaries from CSV if it exists
-    logger.debug("Loading cached file summaries")
-    summaries_cache = {}
-    csv_path = os.path.join(os.getcwd(), "file_summaries_cache.csv")
-    if os.path.exists(csv_path):
-        try:
-            with open(csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    if all(field in row for field in ['file_hash', 'summary', 'file_path', 'last_modified']):
-                        # Store with file hash as key
-                        summaries_cache[row['file_hash']] = {
-                            'summary': row['summary'],
-                            'file_path': row['file_path'],
-                            'last_modified': float(row['last_modified'])
-                        }
-            print(f"Loaded {len(summaries_cache)} cached file summaries.")
-        except Exception as e:
-            print(f"Error loading summaries cache: {str(e)}")
-    
-    # Analyze files - main functionality
-    logger.info("Starting file analysis")
-    file_summaries = []
-    new_or_updated_summaries = []
-    
-    for file_path in files_to_process:
-        print(f"\nAnalyzing: {file_path}")
-        
-        # Calculate file hash and get last modified time
-        file_hash = get_file_hash(file_path)
-        last_modified = os.path.getmtime(file_path)
-        
-        # Check if we have a cached summary for this file hash 
-        # and if the file hasn't been modified since
-        use_cached = False
-        if file_hash in summaries_cache:
-            cached_entry = summaries_cache[file_hash]
-            if float(cached_entry['last_modified']) >= last_modified:
-                summary = cached_entry['summary']
-                print(f"Using cached summary")
-                use_cached = True
-            
-        # If not in cache or file was modified, generate a new summary
-        if not use_cached:
+        # Process each file
+        for file_path in files_to_process:
             summary = get_file_summary(file_path, client)
             if summary:
-                # Add to new/updated summaries list for CSV update
-                new_or_updated_summaries.append({
-                    'file_hash': file_hash,
-                    'file_path': file_path,
-                    'summary': summary,
-                    'last_modified': last_modified
+                file_summaries.append({
+                    "file_path": file_path,
+                    "summary": summary
                 })
         
-        if summary:
-            # Print summary immediately after analyzing each file
-            print(f"Summary: {summary}")
-            
-            # Store the file summary
-            file_summaries.append({
-                "file_path": file_path,
-                "summary": summary
-            })
-    
-    # Update the CSV cache with new or updated summaries
-    if new_or_updated_summaries:
-        try:
-            # Create or append to the CSV file
-            file_exists = os.path.exists(csv_path)
-            
-            with open(csv_path, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['file_hash', 'file_path', 'summary', 'last_modified']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                
-                # Write header if file doesn't exist
-                if not file_exists:
-                    writer.writeheader()
-                
-                # Write new or updated entries
-                for entry in new_or_updated_summaries:
-                    writer.writerow(entry)
-            
-            print(f"Updated cache with {len(new_or_updated_summaries)} new or modified file summaries.")
-        except Exception as e:
-            print(f"Error updating summaries cache: {str(e)}")
-    
-    # Generate file structure if we have summaries
-    if file_summaries:
-        logger.info(f"Generating file structure from {len(file_summaries)} file summaries")
-        # Convert the file summaries to JSON
-        summaries_json = json.dumps(file_summaries, indent=2)
+        # Generate file structure if we have summaries
+        if file_summaries:
+            file_structure = generate_file_structure(file_summaries, client, specificity)
+            print("\nRAW LLM RESPONSE:")
+            print(json.dumps({"files": file_structure if file_structure else [], "error": None}))
+            return
         
-        # Print what we're sending to Mistral
-        print("\nGENERATING FILE STRUCTURE FROM SUMMARIES:")
-        
-        # Send to Mistral and get raw response
-        response = client.chat(
-            model='mistral',
-            messages=[
-                {"role": "system", "content": FILE_PROMPT},
-                {"role": "user", "content": summaries_json}
-            ],
-            options={"temperature": 0, "num_predict": 2048}
-        )
-        
-        # Print the raw response
+        # If we get here, return an empty structure
         print("\nRAW LLM RESPONSE:")
-        print(response['message']['content'])
+        print(json.dumps({"files": [], "error": None}))
         
-        return response['message']['content']
-    
-    logger.warning("No valid file summaries found, returning empty structure")
-    return json.dumps({"files": []})
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error analyzing directory: {error_msg}", exc_info=True)
+        print("\nRAW LLM RESPONSE:")
+        print(json.dumps({"files": [], "error": error_msg}))
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Error: Missing configuration file path")
+        print("\nRAW LLM RESPONSE:")
+        print(json.dumps({"files": [], "error": "Missing configuration file path"}))
         sys.exit(1)
         
     config_path = sys.argv[1]
@@ -778,14 +462,18 @@ if __name__ == "__main__":
         with open(config_path, 'r') as config_file:
             config = json.load(config_file)
             directory = config.get('directory')
+            specificity = config.get('specificity', 3)
             
             if not directory or not os.path.isdir(directory):
-                print("Error: Invalid directory path")
+                print("\nRAW LLM RESPONSE:")
+                print(json.dumps({"files": [], "error": "Invalid directory path"}))
                 sys.exit(1)
                 
-            result = analyze_directory(directory)
-            print(result)
+            analyze_directory(directory, specificity)
             
     except Exception as e:
-        print(f"Error: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Error in main: {error_msg}", exc_info=True)
+        print("\nRAW LLM RESPONSE:")
+        print(json.dumps({"files": [], "error": error_msg}))
         sys.exit(1)

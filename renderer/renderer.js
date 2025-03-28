@@ -1,4 +1,4 @@
-const { ipcRenderer } = require('electron');
+// const { ipcRenderer } = require('electron');
 
 // DOM Elements
 const directoryInput = document.getElementById('directoryPath');
@@ -13,6 +13,8 @@ const addDirBtn = document.getElementById('addDirBtn');
 const expandAllBtn = document.getElementById('expandAllBtn');
 const collapseAllBtn = document.getElementById('collapseAllBtn');
 const resetBtn = document.getElementById('resetBtn');
+const specificitySlider = document.getElementById('specificitySlider');
+const specificityValue = document.getElementById('specificityValue');
 
 // Add at the beginning of the file after existing DOM elements
 const tabButtons = document.querySelectorAll('.tab-btn');
@@ -60,15 +62,45 @@ function debugLog(message, data) {
 
 // Event listeners
 browseBtn.addEventListener('click', async () => {
-  const directoryPath = await ipcRenderer.invoke('select-directory');
-  if (directoryPath) {
-    directoryInput.value = directoryPath;
-    analyzeBtn.disabled = false;
+  try {
+    const directoryPath = await window.electronAPI.selectDirectory();
+    if (directoryPath) {
+      directoryInput.value = directoryPath;
+      analyzeBtn.disabled = false;
+    }
+  } catch (error) {
+    showMessage(`Error selecting directory: ${error.message}`, 'error');
   }
 });
 
-analyzeBtn.addEventListener('click', () => {
-  validateAndAnalyzeDirectory(directoryInput.value.trim());
+analyzeBtn.addEventListener('click', async () => {
+  const directory = directoryInput.value;
+  if (!directory) return;
+
+  // Show loader
+  loader.style.display = 'flex';
+  resultsContainer.style.display = 'none';
+  messageContainer.innerHTML = '';
+  
+  try {
+    const specificity = parseInt(specificitySlider.value);
+    const response = await window.electronAPI.analyzeDirectory({
+      directory,
+      specificity
+    });
+    
+    const data = JSON.parse(response);
+    if (data.files && data.files.length > 0) {
+      buildFileTree(data);
+      resultsContainer.style.display = 'block';
+    } else {
+      showMessage('No files were found to organize.', 'warning');
+    }
+  } catch (error) {
+    showMessage(`Error analyzing directory: ${error.message}`, 'error');
+  } finally {
+    loader.style.display = 'none';
+  }
 });
 
 // Add input event listener to enable/disable analyze button
@@ -91,11 +123,7 @@ applyBtn.addEventListener('click', async () => {
   applyBtn.disabled = true;
   
   try {
-    // Call backend to apply changes with current structure
-    const result = await ipcRenderer.invoke('apply-changes', fileStructureData);
-    
-    loader.style.display = 'none';
-    applyBtn.disabled = false;
+    const result = await window.electronAPI.applyChanges(fileStructureData);
     
     if (result.success) {
       showMessage('File structure reorganization completed successfully!', 'success');
@@ -103,9 +131,10 @@ applyBtn.addEventListener('click', async () => {
       showMessage(`Error applying changes: ${result.message}`, 'error');
     }
   } catch (error) {
+    showMessage(`Error applying changes: ${error.message}`, 'error');
+  } finally {
     loader.style.display = 'none';
     applyBtn.disabled = false;
-    showMessage(`Error applying changes: ${error.message}`, 'error');
   }
 });
 
@@ -536,7 +565,7 @@ async function validateAndAnalyzeDirectory(path) {
   
   try {
     // First validate if the directory exists
-    const isValid = await ipcRenderer.invoke('validate-directory', path);
+    const isValid = await window.electronAPI.validateDirectory(path);
     
     if (!isValid) {
       showMessage('Please enter a valid directory path', 'error');
@@ -552,22 +581,33 @@ async function validateAndAnalyzeDirectory(path) {
     
     // Call backend to analyze directory
     const startTime = performance.now();
-    fileStructureData = await ipcRenderer.invoke('analyze-directory', path);
+    const response = await window.electronAPI.analyzeDirectory({
+      directory: path,
+      specificity: parseInt(specificitySlider.value)
+    });
     const endTime = performance.now();
     
     debugLog(`Analysis completed in ${(endTime - startTime) / 1000} seconds`);
-    debugLog("File structure data received:", fileStructureData);
     
-    // Build the file tree visualization
-    buildFileTree(fileStructureData);
+    const data = JSON.parse(response);
+    debugLog("File structure data received:", data);
     
-    // Hide loader and show results
-    loader.style.display = 'none';
-    resultsContainer.style.display = 'block';
+    if (data.files && data.files.length > 0) {
+      buildFileTree(data);
+      resultsContainer.style.display = 'block';
+    } else {
+      showMessage('No files were found to organize.', 'warning');
+    }
     
   } catch (error) {
     debugLog("Error during analysis:", error);
-    loader.style.display = 'none';
     showMessage(`Error analyzing directory: ${error.message}`, 'error');
+  } finally {
+    loader.style.display = 'none';
   }
 }
+
+// Update specificity value display
+specificitySlider.addEventListener('input', () => {
+  specificityValue.textContent = specificitySlider.value;
+});
