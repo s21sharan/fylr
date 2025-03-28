@@ -193,3 +193,66 @@ ipcMain.handle('apply-changes', async (event, fileStructure) => {
     });
   });
 });
+
+// Check if test.json exists in the project root directory
+ipcMain.handle('check-test-json', async (event) => {
+  const testJsonPath = path.join(__dirname, 'test.json');
+  debug(`Checking for test.json at: ${testJsonPath}`);
+  return fs.existsSync(testJsonPath);
+});
+
+// Read test.json from the project root directory
+ipcMain.handle('read-test-json', async (event) => {
+  const testJsonPath = path.join(__dirname, 'test.json');
+  try {
+    debug(`Reading test.json from: ${testJsonPath}`);
+    const data = fs.readFileSync(testJsonPath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    debug(`Error reading test.json: ${error.message}`);
+    throw new Error(`Failed to read test.json: ${error.message}`);
+  }
+});
+
+ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) => {
+  try {
+    const configPath = path.join(app.getPath('temp'), 'chat_query_config.json');
+    const scriptPath = path.join(__dirname, 'backend', 'chat_agent_runner.py');
+    const pythonPath = getPythonPath();
+
+    fs.writeFileSync(configPath, JSON.stringify({
+      message,
+      currentFileStructure
+    }));
+
+    const options = {
+      mode: 'text',
+      pythonPath: pythonPath,
+      pythonOptions: ['-u'],
+      args: [configPath]
+    };
+
+    return new Promise((resolve, reject) => {
+      PythonShell.run(scriptPath, options, (err, results) => {
+        if (err) {
+          console.error('Chat agent error:', err);
+          reject(err);
+          return;
+        }
+
+        try {
+          const lastLine = results[results.length - 1];
+          const data = JSON.parse(lastLine);
+          resolve(data);
+        } catch (parseError) {
+          console.error('Failed to parse chat agent output:', parseError);
+          reject(parseError);
+        }
+      });
+    });
+
+  } catch (err) {
+    console.error('Error in chat-query handler:', err);
+    return { error: err.message };
+  }
+});

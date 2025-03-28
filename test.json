@@ -1,0 +1,36 @@
+{
+    "files": [
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/Introduction_to_String_Theory.pdf",
+        "dst_path": "Work/Introduction_to_String_Theory.pdf"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/4d0fb253-d4a1-45d2-b255-7669ab17e8a8.pdf",
+        "dst_path": "Travel/Lonely_Planet_Guidebook_12th_Edition.pdf"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/Chicken_Fried_Rice_-_Cooking_Classy.pdf",
+        "dst_path": "Recipes/Chicken_Fried_Rice_-_Cooking_Classy.pdf"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/Lecture_Notes_The_Mental_Process.pdf",
+        "dst_path": "Education/Lecture_Notes_The_Mental_Process.pdf"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/289475r98q3475098udkjhaskjdfha2p89475r24.pdf",
+        "dst_path": "Travel/Japan_Travel_Guide.pdf"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/aiosdjforio4872.jpeg",
+        "dst_path": "Images/Golden_Retriever.jpeg"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/360_F_565740155_jISgBIQ6KxAnJrU9BelT0monORTNarHm.jpg",
+        "dst_path": "Images/Scenic_Landscape.jpg"
+      },
+      {
+        "src_path": "/Users/sharans/Downloads/fylr-test/c33f01fa-8589-4e28-b38f-2738ab17e8a8.pdf",
+        "dst_path": "Travel/Hawaii_Travel_Guide.pdf"
+      }
+    ]
+}
