@@ -9,7 +9,7 @@ import mimetypes
 import hashlib
 import csv
 import time
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+import moondream as md
 import logging
 
 # Configure logging
@@ -105,40 +105,34 @@ def is_image_file(file_path):
     return mime_type and mime_type.startswith('image/')
 
 def classify_image(file_path, client):
-    """Classify the contents of an image file using Google ViT model from Hugging Face"""
+    """Classify the contents of an image file using Moondream model"""
     logger.debug(f"Starting image classification for: {file_path}")
     try:
         # Load the image
         logger.debug(f"Loading image: {file_path}")
         image = Image.open(file_path)
         
-        # Initialize the ViT model and processor
-        logger.debug("Initializing ViT model and processor")
-        processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
-        model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
+        # Initialize Moondream model
+        logger.debug("Initializing Moondream model")
+        model = md.vl(model="/Users/sharans/Downloads/moondream-0_5b-int8.mf")
         
-        # Process the image and get predictions
-        logger.debug("Processing image and generating predictions")
-        inputs = processor(images=image, return_tensors="pt")
-        outputs = model(**inputs)
-        logits = outputs.logits
+        # Encode the image
+        logger.debug("Encoding image")
+        encoded_image = model.encode_image(image)
         
-        # Get the predicted class
-        predicted_class_idx = logits.argmax(-1).item()
-        predicted_class = model.config.id2label[predicted_class_idx]
-        logger.debug(f"Predicted class: {predicted_class} (idx: {predicted_class_idx})")
+        # Generate caption
+        logger.debug("Generating caption")
+        caption = model.caption(encoded_image)["caption"]
+        logger.debug(f"Generated caption: {caption}")
         
         # Format the response
-        description = predicted_class.replace('_', ' ')
-        
-        # Format the response similar to how you did with Moondream
-        if description:
-            result = f"Image containing {description.lower()}"
+        if caption:
+            result = f"Image containing {caption.lower()}"
             logger.debug(f"Final classification result: {result}")
             return result
         else:
             result = f"Image file from {os.path.basename(file_path)}"
-            logger.debug(f"No valid description, using fallback: {result}")
+            logger.debug(f"No valid caption, using fallback: {result}")
             return result
     except Exception as e:
         logger.error(f"Error classifying image {file_path}: {str(e)}", exc_info=True)

@@ -1,8 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  analyzeDirectory: (data) => ipcRenderer.invoke('analyze-directory', data),
-  selectDirectory: () => ipcRenderer.invoke('select-directory'),
-  validateDirectory: (path) => ipcRenderer.invoke('validate-directory', path),
-  applyChanges: (data) => ipcRenderer.invoke('apply-changes', data)
-}); 
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld(
+  'electronAPI', {
+    selectDirectory: () => ipcRenderer.invoke('select-directory'),
+    sendChatQuery: (data) => ipcRenderer.invoke('send-chat-query', data)
+    // Add any other methods you need to expose
+  }
+); 
