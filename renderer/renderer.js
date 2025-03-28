@@ -632,6 +632,7 @@ async function sendChatMessage() {
     removeThinkingIndicator(thinkingId);
     
     // Add assistant response
+    console.log("[DEBUG] Response from chat-query:", response);
     addMessageToChat(response.message, 'assistant');
     
     // Update file structure if needed

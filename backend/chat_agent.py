@@ -5,37 +5,50 @@ from langchain.chains import LLMChain
 from langchain.llms import Ollama
 import json
 import os
-from .initial_organize_electron import normalize_category
 
 class FileOrganizationAgent:
     def __init__(self, client):
         self.client = client
         self.llm = Ollama(base_url="http://localhost:11434", model="mistral")
-        self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            input_key="instruction",
+            return_messages=True
+        )
         
         self.prompt_template = PromptTemplate(
             input_variables=["file_structure", "instruction", "chat_history"],
             template="""
-            You are an AI assistant specialized in organizing files. You're helping a user 
-            modify their file organization structure according to their preferences.
-            
-            Current file structure:
-            {file_structure}
-            
-            User instruction: {instruction}
-            
-            Previous conversation:
-            {chat_history}
-            
-            Based on the user's instruction, suggest a new organization for the files. 
-            Your response should include:
-            
-            1. A friendly explanation of the changes you're making
-            2. A modified file structure in JSON format that matches the original structure's format
-            
-            Only modify the file structure if the user's instruction is about changing file organization.
-            If they're just asking questions, provide information without modifying the structure.
-            """
+        You are an AI assistant specialized in organizing files. You're helping a user 
+        modify their file organization structure according to their preferences.
+
+        Current file structure:
+        {file_structure}
+
+        User instruction: {instruction}
+
+        Previous conversation:
+        {chat_history}
+
+        ---
+
+        Task:
+        Carefully read the user's instruction and apply it to the current file structure.
+
+        Always respond in the following format:
+
+        1. A friendly explanation of what you did (1–2 sentences).
+        2. The updated file structure in valid **JSON** format (matching the input structure style, no markdown).
+
+        ---
+
+        💡 Important rules:
+        - Do **not** give terminal commands or CLI steps.
+        - Do **not** summarize file contents.
+        - Do **not** respond in markdown or code blocks.
+        - If no changes are needed, return the original structure and explain why.
+        - Ensure the JSON is **valid and parsable** — it will be used by a program.
+        """
         )
         
         self.chain = LLMChain(
@@ -49,11 +62,16 @@ class FileOrganizationAgent:
         # Convert the file structure to a pretty string representation for the prompt
         file_structure_str = json.dumps(current_file_structure, indent=2)
         
+        print("[DEBUG] User instruction:", message)
+        print("[DEBUG] Current file structure:", file_structure_str)
+
         # Get response from LLM
         response = self.chain.run(
             file_structure=file_structure_str,
             instruction=message
         )
+        
+        print("[DEBUG] LLM response:", response)
         
         # Check if the response contains a new file structure (in JSON format)
         try:
@@ -89,4 +107,4 @@ class FileOrganizationAgent:
                 return json.loads(json_str)
             return None
         except:
-            return None 
+            return None
