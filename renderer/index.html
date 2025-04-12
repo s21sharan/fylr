@@ -4,127 +4,226 @@
   <meta charset="UTF-8">
   <title>Fylr</title>
   <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      -webkit-app-region: drag; /* Make the entire window draggable */
+      background-color: #7c4dff;
+    }
+
+    .window-controls {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      display: flex;
+      gap: 8px;
+      z-index: 1000;
+    }
+
+    .window-button {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+
+    #close-button {
+      background-color: #ff5f57;
+    }
+
+    #minimize-button {
+      background-color: #febc2e;
+    }
+
+    #maximize-button {
+      background-color: #28c840;
+    }
+
+    #close-button:hover {
+      background-color: #ff4444;
+    }
+
+    #minimize-button:hover {
+      background-color: #e6aa29;
+    }
+
+    #maximize-button:hover {
+      background-color: #24b33a;
+    }
+
+    .content {
+      margin: 32px 16px 16px 16px;  /* Increased top margin */
+    }
+
+    .container {
+      background-color: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-top: 8px;  /* Additional spacing from top */
+    }
+
+    /* Adjust header section spacing */
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    /* Make sure the h1 doesn't push content up */
+    .header-section h1 {
+      margin-top: 0;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header-section">
-      <h1>Fylr</h1>
-      <div class="mode-toggle">
-        <span class="mode-label">Local</span>
-        <label class="switch">
-          <input type="checkbox" id="modeToggle">
-          <span class="slider round"></span>
-        </label>
-        <span class="mode-label">Online</span>
+  <div class="window-controls">
+    <button class="window-button" id="close-button"></button>
+    <button class="window-button" id="minimize-button"></button>
+    <button class="window-button" id="maximize-button"></button>
+  </div>
+  <div class="content">
+    <div class="container">
+      <div class="header-section">
+        <h1>Fylr</h1>
+        <div class="mode-toggle">
+          <span class="mode-label">Local</span>
+          <label class="switch">
+            <input type="checkbox" id="modeToggle">
+            <span class="slider round"></span>
+          </label>
+          <span class="mode-label">Online</span>
+        </div>
       </div>
-    </div>
-    
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="initial-organize">Initial Organize</button>
-      <button class="tab-btn" data-tab="live-mode">Live Mode</button>
-      <button class="tab-btn" data-tab="agentic-search">Agentic Search</button>
-      <button class="tab-btn" data-tab="file-rename">File Rename</button>
-    </div>
+      
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="initial-organize">Initial Organize</button>
+        <button class="tab-btn" data-tab="live-mode">Live Mode</button>
+        <button class="tab-btn" data-tab="agentic-search">Agentic Search</button>
+        <button class="tab-btn" data-tab="file-rename">File Rename</button>
+      </div>
 
-    <div class="tab-content active" id="initial-organize">
-      <div class="input-section">
-        <div class="directory-input">
-          <input 
-            type="text" 
-            id="directoryPath" 
-            placeholder="Type or browse for directory path..."
-            spellcheck="false"
-          >
-          <button id="browseBtn">Browse</button>
-        </div>
-        <button id="analyzeBtn" disabled>Analyze Files</button>
-      </div>
-      
-      <div class="loader" id="loader">
-        <div class="spinner"></div>
-        <p>Analyzing files and generating structure...</p>
-      </div>
-      
-      <div class="results-container" id="resultsContainer">
-        <h2>Proposed File Structure</h2>
-        <div class="button-bar">
-          <button id="addDirBtn">Add Directory</button>
-          <button id="expandAllBtn">Expand All</button>
-          <button id="collapseAllBtn">Collapse All</button>
-        </div>
-        <div class="tree-container">
-          <div id="fileTree" class="file-tree"></div>
-        </div>
-        <div class="controls-container">
-          <button id="resetBtn">Reset to Original</button>
-          <button id="applyBtn">Apply Changes</button>
+      <div class="tab-content active" id="initial-organize">
+        <div class="input-section">
+          <div class="directory-input">
+            <input 
+              type="text" 
+              id="directoryPath" 
+              placeholder="Type or browse for directory path..."
+              spellcheck="false"
+            >
+            <button id="browseBtn">Browse</button>
+          </div>
+          <button id="analyzeBtn" disabled>Analyze Files</button>
         </div>
         
-        <!-- Chat feature -->
-        <div class="chat-container">
-          <button id="chatToggleBtn" class="chat-toggle-btn">
-            <span class="chat-icon">💬</span>
-            <span class="chat-label">Chat Assistant</span>
-          </button>
-          <div id="chatInterface" class="chat-interface hidden">
-            <div id="chatMessages" class="chat-messages"></div>
-            <div class="chat-input-container">
-              <input type="text" id="chatInput" placeholder="Ask how to organize your files...">
-              <button id="chatSendBtn">Send</button>
-            </div>
+        <div class="loader" id="loader">
+          <div class="spinner"></div>
+          <p>Analyzing files and generating structure...</p>
+        </div>
+        
+        <div class="results-container" id="resultsContainer">
+          <h2>Proposed File Structure</h2>
+          <div class="button-bar">
+            <button id="addDirBtn">Add Directory</button>
+            <button id="expandAllBtn">Expand All</button>
+            <button id="collapseAllBtn">Collapse All</button>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="tab-content" id="live-mode">
-      <h2>Live Mode</h2>
-      <p>Live file organization coming soon...</p>
-    </div>
-
-    <div class="tab-content" id="agentic-search">
-      <h2>Agentic Search</h2>
-      <p>Intelligent file search coming soon...</p>
-    </div>
-
-    <div class="tab-content" id="file-rename">
-      <h2>File Rename</h2>
-      <div class="rename-section">
-        <div class="directory-input">
-          <input 
-            type="text" 
-            id="renameDirectoryPath" 
-            placeholder="Type or browse for directory path..."
-            spellcheck="false"
-          >
-          <button id="renameBrowseBtn" class="browse-btn">Browse</button>
-        </div>
-        <div class="rename-options">
-          <div class="rename-preview">
-            <div class="rename-table">
-              <div class="table-header">
-                <div>Original Name</div>
-                <div>New Name</div>
-                <div>Type</div>
-                <div>Size</div>
-                <div>Actions</div>
-              </div>
-              <div class="table-body" id="renamePreview">
-                <!-- Content will be dynamically populated -->
+          <div class="tree-container">
+            <div id="fileTree" class="file-tree"></div>
+          </div>
+          <div class="controls-container">
+            <button id="resetBtn">Reset to Original</button>
+            <button id="applyBtn">Apply Changes</button>
+          </div>
+          
+          <!-- Chat feature -->
+          <div class="chat-container">
+            <button id="chatToggleBtn" class="chat-toggle-btn">
+              <span class="chat-icon">💬</span>
+              <span class="chat-label">Chat Assistant</span>
+            </button>
+            <div id="chatInterface" class="chat-interface hidden">
+              <div id="chatMessages" class="chat-messages"></div>
+              <div class="chat-input-container">
+                <input type="text" id="chatInput" placeholder="Ask how to organize your files...">
+                <button id="chatSendBtn">Send</button>
               </div>
             </div>
           </div>
         </div>
-        <div class="rename-buttons">
-          <button id="generateNamesBtn" class="primary-btn" disabled>Generate Names</button>
-          <button id="renameApplyBtn" class="primary-btn" disabled>Rename Files</button>
+      </div>
+
+      <div class="tab-content" id="live-mode">
+        <h2>Live Mode</h2>
+        <p>Live file organization coming soon...</p>
+      </div>
+
+      <div class="tab-content" id="agentic-search">
+        <h2>Agentic Search</h2>
+        <p>Intelligent file search coming soon...</p>
+      </div>
+
+      <div class="tab-content" id="file-rename">
+        <h2>File Rename</h2>
+        <div class="rename-section">
+          <div class="directory-input">
+            <input 
+              type="text" 
+              id="renameDirectoryPath" 
+              placeholder="Type or browse for directory path..."
+              spellcheck="false"
+            >
+            <button id="renameBrowseBtn" class="browse-btn">Browse</button>
+          </div>
+          <div class="rename-options">
+            <div class="rename-preview">
+              <div class="rename-table">
+                <div class="table-header">
+                  <div>Original Name</div>
+                  <div>New Name</div>
+                  <div>Type</div>
+                  <div>Size</div>
+                  <div>Actions</div>
+                </div>
+                <div class="table-body" id="renamePreview">
+                  <!-- Content will be dynamically populated -->
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rename-buttons">
+            <button id="generateNamesBtn" class="primary-btn" disabled>Generate Names</button>
+            <button id="renameApplyBtn" class="primary-btn" disabled>Rename Files</button>
+          </div>
         </div>
       </div>
+      
+      <div id="messageContainer" class="message-container"></div>
     </div>
-    
-    <div id="messageContainer" class="message-container"></div>
   </div>
   
   <script src="renderer.js"></script>
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    document.getElementById('minimize-button').addEventListener('click', () => {
+      ipcRenderer.invoke('minimize-window');
+    });
+
+    document.getElementById('maximize-button').addEventListener('click', () => {
+      ipcRenderer.invoke('maximize-window');
+    });
+
+    document.getElementById('close-button').addEventListener('click', () => {
+      ipcRenderer.invoke('close-window');
+    });
+  </script>
 </body>
 </html>

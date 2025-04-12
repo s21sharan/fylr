@@ -24,6 +24,8 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: 'Fylr',
+    frame: false, // Remove the default window frame
+    titleBarStyle: 'hidden', // Hide the title bar
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -421,3 +423,20 @@ function generateNewFileName(originalName, pattern) {
   
   return newName;
 }
+
+// Add window control handlers
+ipcMain.handle('minimize-window', () => {
+  mainWindow.minimize();
+});
+
+ipcMain.handle('maximize-window', () => {
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.handle('close-window', () => {
+  mainWindow.close();
+});
