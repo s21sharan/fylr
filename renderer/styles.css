@@ -538,60 +538,57 @@ button:disabled {
 /* File Rename Section Styles */
 .rename-section {
   padding: 20px;
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .rename-options {
   margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.rename-pattern {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.rename-pattern label {
-  font-weight: 500;
-}
-
-.rename-pattern input {
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
 }
 
 .rename-preview {
-  background-color: #f5f5f5;
-  padding: 15px;
-  border-radius: 4px;
-}
-
-.rename-preview h3 {
-  margin-top: 0;
-  margin-bottom: 10px;
-  font-size: 16px;
-}
-
-.rename-preview-list {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 4px;
   background-color: white;
+  border-radius: 8px;
+}
+
+.rename-table {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) minmax(200px, 2fr) 100px 80px 80px;
+  gap: 24px;
+  padding: 12px 24px;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-weight: 500;
+  color: #1a202c;
+}
+
+.table-body {
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 .rename-preview-item {
-  padding: 8px 12px;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) minmax(200px, 2fr) 100px 80px 80px;
+  gap: 24px;
+  padding: 12px 24px;
   align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  transition: background-color 0.2s;
+}
+
+.rename-preview-item:hover {
+  background-color: #f8fafc;
 }
 
 .rename-preview-item:last-child {
@@ -599,60 +596,140 @@ button:disabled {
 }
 
 .rename-preview-item .original {
-  color: #666;
-  text-decoration: line-through;
-}
-
-.rename-preview-item .arrow {
-  margin: 0 10px;
-  color: #999;
+  color: #4a5568;
+  font-family: monospace;
+  font-size: 14px;
 }
 
 .rename-preview-item .new {
-  color: #2c7be5;
+  position: relative;
+}
+
+.rename-preview-item .new span {
+  display: block;
+  color: #2d3748;
+  font-family: monospace;
+  font-size: 14px;
+  padding: 6px 10px;
+}
+
+.rename-preview-item input {
+  display: none;  /* Hide by default */
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: monospace;
+  color: #2d3748;
+  transition: all 0.2s;
+  background-color: white;
+}
+
+.rename-preview-item.editing input {
+  display: block;  /* Show when editing */
+}
+
+.rename-preview-item.editing .new span {
+  display: none;  /* Hide text when editing */
+}
+
+.rename-preview-item .edit-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: #6b46c1;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  font-size: 16px;
+}
+
+.rename-preview-item .edit-btn:hover {
+  opacity: 1;
+}
+
+.rename-preview-item .type-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
   font-weight: 500;
+}
+
+.rename-preview-item .type-badge.pdf {
+  background-color: #fee2e2;
+  color: #ef4444;
+}
+
+.rename-preview-item .type-badge.image {
+  background-color: #dbeafe;
+  color: #3b82f6;
+}
+
+.rename-preview-item .size {
+  color: #718096;
+  font-size: 14px;
 }
 
 .rename-buttons {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   margin-top: 20px;
+  justify-content: flex-end;
 }
 
-#generateNamesBtn,
-#renameApplyBtn {
+.primary-btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-#generateNamesBtn {
-  background-color: #4a90e2;
+  font-weight: 500;
+  transition: all 0.2s;
+  background-color: #6b46c1;
   color: white;
 }
 
-#generateNamesBtn:hover:not(:disabled) {
-  background-color: #357abd;
+.primary-btn:hover:not(:disabled) {
+  background-color: #553c9a;
+  transform: translateY(-1px);
 }
 
-#generateNamesBtn:disabled {
-  background-color: #ccc;
+.primary-btn:disabled {
+  background-color: #cbd5e0;
   cursor: not-allowed;
 }
 
-#renameApplyBtn {
-  background-color: #2c7be5;
+.browse-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background-color: #6b46c1;
   color: white;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-#renameApplyBtn:hover:not(:disabled) {
-  background-color: #1a6ed8;
+.browse-btn:hover {
+  background-color: #553c9a;
 }
 
-#renameApplyBtn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
+/* Scrollbar styling */
+.table-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.table-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.table-body::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.table-body::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
 }

@@ -87,18 +87,25 @@
             placeholder="Type or browse for directory path..."
             spellcheck="false"
           >
-          <button id="renameBrowseBtn">Browse</button>
+          <button id="renameBrowseBtn" class="browse-btn">Browse</button>
         </div>
         <div class="rename-options">
           <div class="rename-preview">
-            <h3>Files to Rename</h3>
-            <p class="rename-description">Files will be renamed based on their content summaries. Click "Generate Names" to preview the new names, then "Rename Files" to apply the changes.</p>
-            <div id="renamePreview" class="rename-preview-list"></div>
+            <div class="rename-table">
+              <div class="table-header">
+                <div class="col-original">Original Name</div>
+                <div class="col-new">New Name</div>
+                <div class="col-type">Type</div>
+                <div class="col-size">Size</div>
+                <div class="col-actions">Actions</div>
+              </div>
+              <div id="renamePreview" class="table-body"></div>
+            </div>
           </div>
         </div>
         <div class="rename-buttons">
-          <button id="generateNamesBtn" disabled>Generate Names</button>
-          <button id="renameApplyBtn" disabled>Rename Files</button>
+          <button id="generateNamesBtn" class="primary-btn" disabled>Generate Names</button>
+          <button id="renameApplyBtn" class="primary-btn" disabled>Rename Files</button>
         </div>
       </div>
     </div>

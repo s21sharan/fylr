@@ -39,6 +39,7 @@ let currentStructure = { files: [] };
 // Store files for renaming
 let filesToRename = [];
 let generatedNames = {};
+let selectedFiles = new Set();
 
 // Create modal for adding directories
 const modal = document.createElement('div');
@@ -737,11 +738,148 @@ generateNamesBtn.addEventListener('click', async () => {
   }
 });
 
+// Add event listeners for select all/deselect all
+document.getElementById('selectAllBtn').addEventListener('click', () => {
+  selectedFiles = new Set(filesToRename.map(file => file.name));
+  updateRenamePreview();
+});
+
+document.getElementById('deselectAllBtn').addEventListener('click', () => {
+  selectedFiles.clear();
+  updateRenamePreview();
+});
+
+function updateRenamePreview() {
+  if (!filesToRename.length) {
+    renamePreview.innerHTML = '<div class="rename-preview-item">No files to rename</div>';
+    return;
+  }
+
+  renamePreview.innerHTML = '';
+  filesToRename.forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'rename-preview-item';
+    
+    // Original name
+    const originalName = document.createElement('div');
+    originalName.className = 'original';
+    originalName.textContent = file.name;
+    
+    // New name container
+    const newName = document.createElement('div');
+    newName.className = 'new';
+    
+    // Text display
+    const newNameText = document.createElement('span');
+    newNameText.textContent = generatedNames[file.name] || file.name;
+    
+    // Input field (hidden by default)
+    const newNameInput = document.createElement('input');
+    newNameInput.type = 'text';
+    newNameInput.value = generatedNames[file.name] || file.name;
+    newNameInput.addEventListener('blur', () => {
+      item.classList.remove('editing');
+      if (newNameInput.value.trim() !== '') {
+        generatedNames[file.name] = newNameInput.value;
+        newNameText.textContent = newNameInput.value;
+        updateRenameButtons();
+      }
+    });
+    newNameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        newNameInput.blur();
+      }
+    });
+    
+    newName.appendChild(newNameText);
+    newName.appendChild(newNameInput);
+    
+    // File type badge
+    const type = document.createElement('div');
+    const typeBadge = document.createElement('span');
+    typeBadge.className = 'type-badge';
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExt)) {
+      typeBadge.classList.add('image');
+      typeBadge.textContent = 'Image';
+    } else if (fileExt === 'pdf') {
+      typeBadge.classList.add('pdf');
+      typeBadge.textContent = 'PDF';
+    } else {
+      typeBadge.textContent = fileExt.toUpperCase();
+    }
+    type.appendChild(typeBadge);
+    
+    // File size
+    const size = document.createElement('div');
+    size.className = 'size';
+    size.textContent = formatFileSize(file.size);
+    
+    // Edit button
+    const actions = document.createElement('div');
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-btn';
+    editBtn.innerHTML = '✏️';
+    editBtn.title = 'Edit name';
+    editBtn.addEventListener('click', () => {
+      // Remove editing class from any other items
+      document.querySelectorAll('.rename-preview-item').forEach(el => {
+        if (el !== item) el.classList.remove('editing');
+      });
+      // Toggle editing for this item
+      item.classList.add('editing');
+      newNameInput.focus();
+      newNameInput.select();
+    });
+    actions.appendChild(editBtn);
+    
+    // Add all elements to the item
+    item.appendChild(originalName);
+    item.appendChild(newName);
+    item.appendChild(type);
+    item.appendChild(size);
+    item.appendChild(actions);
+    
+    renamePreview.appendChild(item);
+  });
+  
+  updateRenameButtons();
+}
+
+// Add click event listener to handle clicking outside of editing items
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.rename-preview-item')) {
+    document.querySelectorAll('.rename-preview-item').forEach(item => {
+      item.classList.remove('editing');
+    });
+  }
+});
+
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function updateRenameButtons() {
+  const hasChanges = Object.keys(generatedNames).length > 0;
+  generateNamesBtn.disabled = !filesToRename.length;
+  renameApplyBtn.disabled = !hasChanges;
+}
+
+// Update the rename files handler
 renameApplyBtn.addEventListener('click', async () => {
-  if (!filesToRename.length || !Object.keys(generatedNames).length) return;
+  if (!Object.keys(generatedNames).length) return;
   
   try {
-    // Show loading state
     renameApplyBtn.disabled = true;
     renameApplyBtn.textContent = 'Renaming Files...';
     
@@ -752,7 +890,6 @@ renameApplyBtn.addEventListener('click', async () => {
     
     if (result.success) {
       showMessage('Files renamed successfully!', 'success');
-      // Update the preview with the new names
       if (result.renamed_files) {
         filesToRename = filesToRename.map(file => {
           const renamed = result.renamed_files.find(r => r.original === file.name);
@@ -766,7 +903,6 @@ renameApplyBtn.addEventListener('click', async () => {
         });
         generatedNames = {};
         updateRenamePreview();
-        renameApplyBtn.disabled = true;
       }
     } else {
       showMessage(`Error renaming files: ${result.error}`, 'error');
@@ -795,24 +931,4 @@ async function loadFilesForRenaming(directoryPath) {
     generateNamesBtn.disabled = true;
     renameApplyBtn.disabled = true;
   }
-}
-
-function updateRenamePreview() {
-  if (!filesToRename.length) {
-    renamePreview.innerHTML = '<div class="rename-preview-item">No files to rename</div>';
-    return;
-  }
-
-  renamePreview.innerHTML = '';
-  filesToRename.forEach(file => {
-    const item = document.createElement('div');
-    item.className = 'rename-preview-item';
-    const newName = generatedNames[file.name] || 'Not generated yet';
-    item.innerHTML = `
-      <span class="original">${file.name}</span>
-      <span class="arrow">→</span>
-      <span class="new">${newName}</span>
-    `;
-    renamePreview.appendChild(item);
-  });
 }
