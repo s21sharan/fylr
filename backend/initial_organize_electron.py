@@ -24,31 +24,59 @@ FILE_PROMPT = """
 You will be provided with list of source files and a summary of their contents. Organize all the files into a directory structure that optimally organizes the files using known conventions and best practices.
 Follow good naming conventions.
 
-- Group files by content type into categories such as "images", "recipes", "travel", "school", "work", "home", etc.
-- try to group as many files as you can into the same category
-- Use EXACTLY ONE level of nesting in the directory structure. No subfolders allowed.
-- All files must be placed directly into their category folder without any additional subfolder structure.
+Here are some examples of how to organize student files:
 
-use this as an EXAMPLE for organization:
--Financial
-    -2023_Budget_Spreadsheet.xlsx
--Recipes
-    -Chocolate_Cake_Recipe.pdf
--School
-    -Math_Homework_Solutions.pdf
-    -Research_Paper_Draft.docx
-    -Academic_Journal_Article.pdf
-    -Convolutional_Neural_Networks_Research_Paper.pdf
--Photos
-    -Cityscape_Sunset_May_17_2023.jpg
-    -Morning_Coffee_Shop_May_16_2023.jpg
-    -Office_Team_Lunch_May_15_2023.jpg
--Travel
-    -Summer_Vacation_Itinerary_2023.docx
--Work
-    -Project_X_Proposal_Draft.docx
-    -Quarterly_Sales_Report.pdf
+EXAMPLE 1 - Computer Science Student:
+-Academic
+    -CS101_Introduction_to_Programming_Notes.pdf
+    -Data_Structures_Assignment_1_Solution.py
+    -Algorithms_Midterm_Study_Guide.pdf
+-Research
+    -Machine_Learning_Research_Paper_Draft.docx
+    -AI_Ethics_Literature_Review.pdf
+-Project
+    -Web_App_Final_Project_Code.zip
+    -Mobile_App_Design_Documentation.pdf
+-Study_Materials
+    -Programming_Interview_Prep_Notes.pdf
+    -System_Design_Study_Guide.pdf
+
+EXAMPLE 2 - Medical Student:
+-Academic
+    -Anatomy_Lecture_Notes_Week_1.pdf
+    -Pharmacology_Study_Guide.pdf
+    -Pathology_Case_Studies.docx
+-Clinical
+    -Patient_Case_Reports_2023.pdf
+    -Clinical_Rotation_Schedule.xlsx
+-Research
+    -Medical_Research_Proposal.docx
+    -Literature_Review_Cancer_Treatment.pdf
+-Study_Materials
+    -USMLE_Step_1_Notes.pdf
+    -Medical_Terminology_Flashcards.pdf
+
+EXAMPLE 3 - Business Student:
+-Academic
+    -Financial_Accounting_Homework_1.xlsx
     -Marketing_Strategy_Presentation.pptx
+    -Business_Ethics_Case_Study.pdf
+-Internship
+    -Summer_Internship_Report.docx
+    -Company_Analysis_Presentation.pptx
+-Research
+    -Market_Research_Project.pdf
+    -Business_Plan_Competition.docx
+-Study_Materials
+    -GMAT_Prep_Notes.pdf
+    -Business_Case_Studies.pdf
+
+Key principles for student file organization:
+1. Group by academic subject or course
+2. Separate research materials from coursework
+3. Keep project work in dedicated folders
+4. Maintain study materials separately
+5. Use consistent naming: CourseName_ContentType_Description.ext
 
 Your response must be a JSON object with the following schema:
 ```json
