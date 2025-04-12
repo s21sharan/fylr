@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { PythonShell } = require('python-shell');
 const fs = require('fs');
-
 const { getPythonPath } = require('./find_python.js');
 
 let mainWindow;
