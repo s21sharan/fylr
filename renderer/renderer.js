@@ -18,6 +18,13 @@ const resetBtn = document.getElementById('resetBtn');
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 
+// Add after existing DOM elements
+const renameDirectoryInput = document.getElementById('renameDirectoryPath');
+const renameBrowseBtn = document.getElementById('renameBrowseBtn');
+const generateNamesBtn = document.getElementById('generateNamesBtn');
+const renamePreview = document.getElementById('renamePreview');
+const renameApplyBtn = document.getElementById('renameApplyBtn');
+
 // Store file structure data
 let fileStructureData = null;
 
@@ -28,6 +35,10 @@ const DEBUG = true;
 let originalFileStructure = null;
 // Track the current, potentially modified structure
 let currentStructure = { files: [] };
+
+// Store files for renaming
+let filesToRename = [];
+let generatedNames = {};
 
 // Create modal for adding directories
 const modal = document.createElement('div');
@@ -682,4 +693,126 @@ function removeThinkingIndicator(id) {
   if (thinkingElement) {
     thinkingElement.remove();
   }
+}
+
+// Event listeners for rename tab
+renameBrowseBtn.addEventListener('click', async () => {
+  const directoryPath = await ipcRenderer.invoke('select-directory');
+  if (directoryPath) {
+    renameDirectoryInput.value = directoryPath;
+    loadFilesForRenaming(directoryPath);
+  }
+});
+
+renameDirectoryInput.addEventListener('input', () => {
+  if (renameDirectoryInput.value.trim()) {
+    loadFilesForRenaming(renameDirectoryInput.value.trim());
+  }
+});
+
+generateNamesBtn.addEventListener('click', async () => {
+  if (!filesToRename.length) return;
+  
+  try {
+    // Show loading state
+    generateNamesBtn.disabled = true;
+    generateNamesBtn.textContent = 'Generating Names...';
+    
+    const result = await ipcRenderer.invoke('generate-filenames', {
+      files: filesToRename
+    });
+    
+    if (result.success) {
+      generatedNames = result.generated_names;
+      updateRenamePreview();
+      renameApplyBtn.disabled = false;
+    } else {
+      showMessage(`Error generating names: ${result.error}`, 'error');
+    }
+  } catch (error) {
+    showMessage(`Error generating names: ${error.message}`, 'error');
+  } finally {
+    generateNamesBtn.disabled = false;
+    generateNamesBtn.textContent = 'Generate Names';
+  }
+});
+
+renameApplyBtn.addEventListener('click', async () => {
+  if (!filesToRename.length || !Object.keys(generatedNames).length) return;
+  
+  try {
+    // Show loading state
+    renameApplyBtn.disabled = true;
+    renameApplyBtn.textContent = 'Renaming Files...';
+    
+    const result = await ipcRenderer.invoke('rename-files', {
+      files: filesToRename,
+      new_names: generatedNames
+    });
+    
+    if (result.success) {
+      showMessage('Files renamed successfully!', 'success');
+      // Update the preview with the new names
+      if (result.renamed_files) {
+        filesToRename = filesToRename.map(file => {
+          const renamed = result.renamed_files.find(r => r.original === file.name);
+          if (renamed) {
+            return {
+              ...file,
+              name: renamed.new
+            };
+          }
+          return file;
+        });
+        generatedNames = {};
+        updateRenamePreview();
+        renameApplyBtn.disabled = true;
+      }
+    } else {
+      showMessage(`Error renaming files: ${result.error}`, 'error');
+    }
+  } catch (error) {
+    showMessage(`Error renaming files: ${error.message}`, 'error');
+  } finally {
+    renameApplyBtn.disabled = false;
+    renameApplyBtn.textContent = 'Rename Files';
+  }
+});
+
+async function loadFilesForRenaming(directoryPath) {
+  try {
+    const files = await ipcRenderer.invoke('get-files', directoryPath);
+    filesToRename = files;
+    generatedNames = {};
+    updateRenamePreview();
+    generateNamesBtn.disabled = !files.length;
+    renameApplyBtn.disabled = true;
+  } catch (error) {
+    showMessage(`Error loading files: ${error.message}`, 'error');
+    filesToRename = [];
+    generatedNames = {};
+    renamePreview.innerHTML = '';
+    generateNamesBtn.disabled = true;
+    renameApplyBtn.disabled = true;
+  }
+}
+
+function updateRenamePreview() {
+  if (!filesToRename.length) {
+    renamePreview.innerHTML = '<div class="rename-preview-item">No files to rename</div>';
+    return;
+  }
+
+  renamePreview.innerHTML = '';
+  filesToRename.forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'rename-preview-item';
+    const newName = generatedNames[file.name] || 'Not generated yet';
+    item.innerHTML = `
+      <span class="original">${file.name}</span>
+      <span class="arrow">→</span>
+      <span class="new">${newName}</span>
+    `;
+    renamePreview.appendChild(item);
+  });
 }

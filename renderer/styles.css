@@ -534,3 +534,125 @@ button:disabled {
 .chat-input-container button:hover {
   background-color: #3a76d8;
 }
+
+/* File Rename Section Styles */
+.rename-section {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.rename-options {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rename-pattern {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rename-pattern label {
+  font-weight: 500;
+}
+
+.rename-pattern input {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.rename-preview {
+  background-color: #f5f5f5;
+  padding: 15px;
+  border-radius: 4px;
+}
+
+.rename-preview h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.rename-preview-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.rename-preview-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rename-preview-item:last-child {
+  border-bottom: none;
+}
+
+.rename-preview-item .original {
+  color: #666;
+  text-decoration: line-through;
+}
+
+.rename-preview-item .arrow {
+  margin: 0 10px;
+  color: #999;
+}
+
+.rename-preview-item .new {
+  color: #2c7be5;
+  font-weight: 500;
+}
+
+.rename-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+#generateNamesBtn,
+#renameApplyBtn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+#generateNamesBtn {
+  background-color: #4a90e2;
+  color: white;
+}
+
+#generateNamesBtn:hover:not(:disabled) {
+  background-color: #357abd;
+}
+
+#generateNamesBtn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+#renameApplyBtn {
+  background-color: #2c7be5;
+  color: white;
+}
+
+#renameApplyBtn:hover:not(:disabled) {
+  background-color: #1a6ed8;
+}
+
+#renameApplyBtn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}

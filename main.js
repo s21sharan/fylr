@@ -256,3 +256,130 @@ ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) =>
     return { error: err.message };
   }
 });
+
+// Add after existing IPC handlers
+ipcMain.handle('get-files', async (event, directoryPath) => {
+  try {
+    const files = await fs.promises.readdir(directoryPath, { withFileTypes: true });
+    return files
+      .filter(file => file.isFile())
+      .map(file => ({
+        name: file.name,
+        path: path.join(directoryPath, file.name)
+      }));
+  } catch (error) {
+    console.error('Error reading directory:', error);
+    throw error;
+  }
+});
+
+// Add new IPC handler for generating filenames
+ipcMain.handle('generate-filenames', async (event, { files }) => {
+  try {
+    // Create a temporary JSON file to pass the files to Python
+    const configPath = path.join(app.getPath('temp'), 'rename_files_config.json');
+    const scriptPath = path.join(__dirname, 'backend', 'rename_files.py');
+    const pythonPath = getPythonPath();
+
+    // Write the config file
+    fs.writeFileSync(configPath, JSON.stringify({
+      action: 'generate',
+      files: files
+    }));
+
+    const options = {
+      mode: 'text',
+      pythonPath: pythonPath,
+      pythonOptions: ['-u'],
+      args: [configPath]
+    };
+
+    return new Promise((resolve, reject) => {
+      PythonShell.run(scriptPath, options, (err, results) => {
+        if (err) {
+          console.error('Python script error:', err);
+          reject(err);
+          return;
+        }
+
+        try {
+          const lastLine = results[results.length - 1];
+          const data = JSON.parse(lastLine);
+          resolve(data);
+        } catch (parseError) {
+          console.error('Failed to parse Python output:', parseError);
+          reject(parseError);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error in generate-filenames handler:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Update the rename-files handler
+ipcMain.handle('rename-files', async (event, { files, new_names }) => {
+  try {
+    // Create a temporary JSON file to pass the files and new names to Python
+    const configPath = path.join(app.getPath('temp'), 'rename_files_config.json');
+    const scriptPath = path.join(__dirname, 'backend', 'rename_files.py');
+    const pythonPath = getPythonPath();
+
+    // Write the config file
+    fs.writeFileSync(configPath, JSON.stringify({
+      action: 'rename',
+      files: files,
+      new_names: new_names
+    }));
+
+    const options = {
+      mode: 'text',
+      pythonPath: pythonPath,
+      pythonOptions: ['-u'],
+      args: [configPath]
+    };
+
+    return new Promise((resolve, reject) => {
+      PythonShell.run(scriptPath, options, (err, results) => {
+        if (err) {
+          console.error('Python script error:', err);
+          reject(err);
+          return;
+        }
+
+        try {
+          const lastLine = results[results.length - 1];
+          const data = JSON.parse(lastLine);
+          resolve(data);
+        } catch (parseError) {
+          console.error('Failed to parse Python output:', parseError);
+          reject(parseError);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error in rename-files handler:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+function generateNewFileName(originalName, pattern) {
+  if (!pattern) return originalName;
+  
+  const extension = originalName.split('.').pop();
+  const baseName = originalName.substring(0, originalName.lastIndexOf('.'));
+  
+  // Replace pattern variables
+  let newName = pattern
+    .replace(/{filename}/g, baseName)
+    .replace(/{date}/g, new Date().toISOString().split('T')[0])
+    .replace(/{timestamp}/g, Date.now());
+  
+  // Add extension if not present
+  if (!newName.includes('.')) {
+    newName += `.${extension}`;
+  }
+  
+  return newName;
+}

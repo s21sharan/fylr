@@ -79,8 +79,12 @@ class FileOrganizationAgent:
             new_structure = self.extract_json_from_response(response)
             
             if new_structure:
+                # Split response into text and JSON parts
+                text_parts = response.split('{')
+                text_response = text_parts[0].strip()
+                
                 return {
-                    "message": response.replace(json.dumps(new_structure), "[File structure updated]"),
+                    "message": text_response,
                     "updatedFileStructure": new_structure
                 }
             else:
