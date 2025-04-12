@@ -20,12 +20,15 @@ function debug(message, data) {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, 'assets', 'icon.png');
+  
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'Fylr',
     frame: false, // Remove the default window frame
     titleBarStyle: 'hidden', // Hide the title bar
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -34,6 +37,11 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.on('closed', () => mainWindow = null);
+
+  // Set the dock icon on macOS
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(iconPath);
+  }
 }
 
 app.on('ready', createWindow);
