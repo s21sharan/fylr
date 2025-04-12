@@ -1,4 +1,5 @@
 {
     "action": "organize",
-    "directory": "/path/to/your/files"
+    "directory": "/path/to/your/files",
+    "online_mode": true
 } 

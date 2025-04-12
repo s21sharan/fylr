@@ -5,6 +5,7 @@ const fs = require('fs');
 const { getPythonPath } = require('./find_python.js');
 
 let mainWindow;
+let isOnlineMode = true; // Add default online mode state
 
 const DEBUG = true;
 
@@ -72,7 +73,10 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
     // Create a temporary JSON file to pass the directory path to Python
     const configPath = path.join(app.getPath('temp'), 'file_organizer_config.json');
     debug(`Creating config file at: ${configPath}`);
-    fs.writeFileSync(configPath, JSON.stringify({ directory: directoryPath }));
+    fs.writeFileSync(configPath, JSON.stringify({ 
+      directory: directoryPath,
+      online_mode: isOnlineMode  // Include online mode in config
+    }));
     
     // Path to Python script
     const scriptPath = path.join(__dirname, 'backend', 'initial_organize_electron.py');
@@ -273,64 +277,98 @@ ipcMain.handle('get-files', async (event, directoryPath) => {
   }
 });
 
-// Add new IPC handler for generating filenames
+// Add new IPC handler for online mode toggle
+ipcMain.handle('toggle-online-mode', async (event, online) => {
+  debug(`Toggling online mode: ${online}`);
+  isOnlineMode = online;
+  return isOnlineMode;
+});
+
+// Update generate-filenames handler
 ipcMain.handle('generate-filenames', async (event, { files }) => {
   try {
-    // Create a temporary JSON file to pass the files to Python
     const configPath = path.join(app.getPath('temp'), 'rename_files_config.json');
     const scriptPath = path.join(__dirname, 'backend', 'rename_files.py');
     const pythonPath = getPythonPath();
 
-    // Write the config file
+    debug('Generating filenames with config:', { files });
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'generate',
-      files: files
+      files: files,
+      online_mode: isOnlineMode
     }));
 
     const options = {
       mode: 'text',
       pythonPath: pythonPath,
-      pythonOptions: ['-u'],
+      pythonOptions: ['-u'],  // Unbuffered output
       args: [configPath]
     };
 
     return new Promise((resolve, reject) => {
-      PythonShell.run(scriptPath, options, (err, results) => {
+      debug('Starting Python process with options:', options);
+      const pythonProcess = PythonShell.run(scriptPath, options, (err, results) => {
         if (err) {
           console.error('Python script error:', err);
+          debug('Python execution failed with error:', err);
           reject(err);
           return;
         }
 
+        debug('Python script output:', results);
         try {
           const lastLine = results[results.length - 1];
+          debug('Last line of output:', lastLine);
           const data = JSON.parse(lastLine);
           resolve(data);
         } catch (parseError) {
           console.error('Failed to parse Python output:', parseError);
+          debug('Failed to parse output:', parseError);
           reject(parseError);
         }
+      });
+
+      // Log all output from the Python process
+      pythonProcess.on('message', (message) => {
+        console.log('Python output:', message);  // Log to console
+        debug('Python output:', message);  // Log to debug
+      });
+
+      pythonProcess.on('error', (error) => {
+        console.error('Python process error:', error);
+        debug('Python process error:', error);
+      });
+
+      // Log stdout and stderr
+      pythonProcess.stdout.on('data', (data) => {
+        console.log('Python stdout:', data.toString());
+        debug('Python stdout:', data.toString());
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        console.error('Python stderr:', data.toString());
+        debug('Python stderr:', data.toString());
       });
     });
   } catch (error) {
     console.error('Error in generate-filenames handler:', error);
+    debug('Error in generate-filenames handler:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Update the rename-files handler
+// Update rename-files handler
 ipcMain.handle('rename-files', async (event, { files, new_names }) => {
   try {
-    // Create a temporary JSON file to pass the files and new names to Python
     const configPath = path.join(app.getPath('temp'), 'rename_files_config.json');
     const scriptPath = path.join(__dirname, 'backend', 'rename_files.py');
     const pythonPath = getPythonPath();
 
-    // Write the config file
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'rename',
       files: files,
-      new_names: new_names
+      new_names: new_names,
+      online_mode: isOnlineMode  // Include online mode in config
     }));
 
     const options = {

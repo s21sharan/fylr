@@ -1,5 +1,6 @@
 {
     "action": "rename",
+    "online_mode": true,
     "files": [
         {
             "path": "/path/to/file1.pdf",
