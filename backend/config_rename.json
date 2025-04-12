@@ -1,0 +1,12 @@
+{
+    "action": "rename",
+    "files": [
+        {
+            "path": "/path/to/file1.pdf",
+            "name": "old_name.pdf"
+        }
+    ],
+    "new_names": {
+        "old_name.pdf": "new_name.pdf"
+    }
+} 
