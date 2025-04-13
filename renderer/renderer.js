@@ -72,7 +72,14 @@ const modeToggle = document.getElementById('modeToggle');
 modeToggle.addEventListener('change', async (event) => {
   const isOnline = event.target.checked;
   await ipcRenderer.invoke('toggle-online-mode', isOnline);
+  console.log(`Mode toggled to: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+  showMessage(`Mode set to ${isOnline ? 'ONLINE (OpenAI)' : 'OFFLINE (Local Models)'}`, 'info');
 });
+
+// Function to get current mode state
+async function getCurrentMode() {
+  return modeToggle.checked;
+}
 
 function debugLog(message, data) {
   if (DEBUG) {
@@ -569,12 +576,16 @@ async function validateAndAnalyzeDirectory(path) {
       return;
     }
     
+    const currentMode = await getCurrentMode();
+    console.log(`Starting analysis with mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
+    
     // Show loader
     loader.style.display = 'flex';
     resultsContainer.style.display = 'none';
     messageContainer.innerHTML = '';
     
     debugLog(`Starting analysis for directory: ${path}`);
+    debugLog(`Current mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
     
     // Check if test.json exists in the project root directory
     const testJsonExists = await ipcRenderer.invoke('check-test-json');
@@ -941,3 +952,12 @@ async function loadFilesForRenaming(directoryPath) {
     renameApplyBtn.disabled = true;
   }
 }
+
+// Initialize mode toggle state - add this at the bottom of the file and also 
+// add it to a window.onload or DOMContentLoaded event
+document.addEventListener('DOMContentLoaded', async function() {
+  // Initialize mode toggle to match main process state
+  const currentMode = await ipcRenderer.invoke('get-online-mode');
+  console.log(`Initializing mode toggle to: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
+  modeToggle.checked = currentMode;
+});

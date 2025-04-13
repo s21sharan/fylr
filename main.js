@@ -79,14 +79,19 @@ ipcMain.handle('select-directory', async () => {
 // Run Python script to analyze directory
 ipcMain.handle('analyze-directory', async (event, directoryPath) => {
   debug(`Starting directory analysis: ${directoryPath}`);
+  debug(`Current online mode state: ${isOnlineMode}`);
   return new Promise((resolve, reject) => {
     // Create a temporary JSON file to pass the directory path to Python
     const configPath = path.join(app.getPath('temp'), 'file_organizer_config.json');
     debug(`Creating config file at: ${configPath}`);
-    fs.writeFileSync(configPath, JSON.stringify({ 
+    
+    const configData = { 
       directory: directoryPath,
       online_mode: isOnlineMode  // Include online mode in config
-    }));
+    };
+    
+    debug(`Config data for Python: ${JSON.stringify(configData)}`);
+    fs.writeFileSync(configPath, JSON.stringify(configData));
     
     // Path to Python script
     const scriptPath = path.join(__dirname, 'backend', 'initial_organize_electron.py');
@@ -291,6 +296,12 @@ ipcMain.handle('get-files', async (event, directoryPath) => {
 ipcMain.handle('toggle-online-mode', async (event, online) => {
   debug(`Toggling online mode: ${online}`);
   isOnlineMode = online;
+  return isOnlineMode;
+});
+
+// Add handler to get current online mode
+ipcMain.handle('get-online-mode', async (event) => {
+  debug(`Getting current online mode: ${isOnlineMode}`);
   return isOnlineMode;
 });
 
