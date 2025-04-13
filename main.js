@@ -6,6 +6,10 @@ const { getPythonPath } = require('./find_python.js');
 
 let mainWindow;
 let isOnlineMode = true; // Add default online mode state
+let tokenUsage = 0;
+let callUsage = 0;
+const TOKEN_LIMIT = 15000;
+const CALL_LIMIT = 10;
 
 const DEBUG = true;
 
@@ -79,14 +83,19 @@ ipcMain.handle('select-directory', async () => {
 // Run Python script to analyze directory
 ipcMain.handle('analyze-directory', async (event, directoryPath) => {
   debug(`Starting directory analysis: ${directoryPath}`);
+  debug(`Current online mode state: ${isOnlineMode}`);
   return new Promise((resolve, reject) => {
     // Create a temporary JSON file to pass the directory path to Python
     const configPath = path.join(app.getPath('temp'), 'file_organizer_config.json');
     debug(`Creating config file at: ${configPath}`);
-    fs.writeFileSync(configPath, JSON.stringify({ 
+    
+    const configData = { 
       directory: directoryPath,
       online_mode: isOnlineMode  // Include online mode in config
-    }));
+    };
+    
+    debug(`Config data for Python: ${JSON.stringify(configData)}`);
+    fs.writeFileSync(configPath, JSON.stringify(configData));
     
     // Path to Python script
     const scriptPath = path.join(__dirname, 'backend', 'initial_organize_electron.py');
@@ -104,7 +113,7 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
     };
     
     debug('Starting Python process with options', options);
-    PythonShell.run(scriptPath, options, (err, results) => {
+    const pythonProcess = PythonShell.run(scriptPath, options, (err, results) => {
       if (err) {
         console.error('Python script error:', err);
         debug('Python execution failed with error', err);
@@ -114,33 +123,29 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
       
       debug(`Python script execution completed with ${results.length} lines of output`);
       
-      // The last line of output should be the file structure JSON
-      try {
-        // Find the JSON output (the line after RAW LLM RESPONSE)
-        debug('Processing Python output to find JSON response');
-        let jsonOutput = '';
-        let foundRawLLMResponse = false;
-        
-        for (const line of results) {
-          if (foundRawLLMResponse) {
-            jsonOutput += line;
-          }
-          if (line.includes('RAW LLM RESPONSE:')) {
-            foundRawLLMResponse = true;
-            debug('Found LLM response marker in output');
-          }
+      // Process results and track token usage
+      let jsonOutput = '';
+      let foundRawLLMResponse = false;
+      
+      for (const line of results) {
+        if (line.startsWith('TOKEN_USAGE:')) {
+          const tokens = parseInt(line.split(':')[1]);
+          updateTokenUsage(tokens);
+          updateCallUsage();
+        } else if (foundRawLLMResponse) {
+          jsonOutput += line;
+        } else if (line.includes('RAW LLM RESPONSE:')) {
+          foundRawLLMResponse = true;
+          debug('Found LLM response marker in output');
         }
-        
-        debug('Attempting to parse JSON output');
-        debug('JSON content to parse:', jsonOutput.substring(0, 500) + '...');
-        
-        // Extract JSON using a more robust approach
+      }
+      
+      try {
         const jsonRegex = /{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*}/g;
         const matches = jsonOutput.match(jsonRegex);
         
         if (matches && matches.length > 0) {
           debug(`Found ${matches.length} potential JSON matches`);
-          // Try each potential JSON match until one parses successfully
           let result = null;
           for (const match of matches) {
             try {
@@ -152,7 +157,6 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
               }
             } catch (e) {
               debug(`Failed to parse potential JSON match: ${e.message}`);
-              // Continue to next match
             }
           }
           
@@ -172,6 +176,15 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
         debug('Error parsing output', error);
         debug('Raw output:', results.join('\n'));
         reject(error);
+      }
+    });
+    
+    // Handle process output
+    pythonProcess.on('message', (message) => {
+      if (message.startsWith('TOKEN_USAGE:')) {
+        const tokens = parseInt(message.split(':')[1]);
+        updateTokenUsage(tokens);
+        updateCallUsage();
       }
     });
   });
@@ -294,6 +307,12 @@ ipcMain.handle('toggle-online-mode', async (event, online) => {
   return isOnlineMode;
 });
 
+// Add handler to get current online mode
+ipcMain.handle('get-online-mode', async (event) => {
+  debug(`Getting current online mode: ${isOnlineMode}`);
+  return isOnlineMode;
+});
+
 // Update generate-filenames handler
 ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
   try {
@@ -327,7 +346,18 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
 
         debug('Python script output:', results);
         try {
-          const lastLine = results[results.length - 1];
+          // Process all output lines to capture token usage
+          let lastLine = '';
+          for (const line of results) {
+            if (line.startsWith('TOKEN_USAGE:')) {
+              const tokens = parseInt(line.split(':')[1]);
+              updateTokenUsage(tokens);
+            } else {
+              lastLine = line;
+            }
+          }
+
+          // Parse the final JSON result
           debug('Last line of output:', lastLine);
           const data = JSON.parse(lastLine);
           resolve(data);
@@ -338,26 +368,17 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
         }
       });
 
-      // Log all output from the Python process
+      // Handle process output in real-time
       pythonProcess.on('message', (message) => {
-        console.log('Python output:', message);  // Log to console
-        debug('Python output:', message);  // Log to debug
+        if (message.startsWith('TOKEN_USAGE:')) {
+          const tokens = parseInt(message.split(':')[1]);
+          updateTokenUsage(tokens);
+        }
       });
 
       pythonProcess.on('error', (error) => {
         console.error('Python process error:', error);
         debug('Python process error:', error);
-      });
-
-      // Log stdout and stderr
-      pythonProcess.stdout.on('data', (data) => {
-        console.log('Python stdout:', data.toString());
-        debug('Python stdout:', data.toString());
-      });
-
-      pythonProcess.stderr.on('data', (data) => {
-        console.error('Python stderr:', data.toString());
-        debug('Python stderr:', data.toString());
       });
     });
   } catch (error) {
@@ -447,4 +468,51 @@ ipcMain.handle('maximize-window', () => {
 
 ipcMain.handle('close-window', () => {
   mainWindow.close();
+});
+
+// Add rate limit tracking functions
+function updateTokenUsage(tokens) {
+  tokenUsage += tokens;
+  if (mainWindow) {
+    mainWindow.webContents.send('update-token-usage', tokenUsage);
+  }
+}
+
+function updateCallUsage() {
+  callUsage += 1;
+  if (mainWindow) {
+    mainWindow.webContents.send('update-call-usage', callUsage);
+  }
+}
+
+function resetRateLimits() {
+  tokenUsage = 0;
+  callUsage = 0;
+  if (mainWindow) {
+    mainWindow.webContents.send('update-token-usage', tokenUsage);
+    mainWindow.webContents.send('update-call-usage', callUsage);
+  }
+}
+
+// Add IPC handler for checking rate limits
+ipcMain.handle('check-rate-limits', async () => {
+  return {
+    tokenUsage,
+    callUsage,
+    tokenLimit: TOKEN_LIMIT,
+    callLimit: CALL_LIMIT,
+    canProceed: tokenUsage < TOKEN_LIMIT && callUsage < CALL_LIMIT
+  };
+});
+
+// Add IPC handler for resetting rate limits
+ipcMain.handle('reset-rate-limits', async () => {
+  resetRateLimits();
+  return true;
+});
+
+// Add IPC handler for updating call usage
+ipcMain.handle('update-call-usage', async () => {
+  updateCallUsage();
+  return true;
 });
