@@ -276,6 +276,8 @@ Write your response a JSON object with the following schema:
                             max_tokens=256
                         )
                         response_content = response.output_text
+                        # Send token usage to main process
+                        print(f"TOKEN_USAGE:{response.usage.total_tokens}")
                     except Exception as e:
                         logger.error(f"Error using OpenAI responses API: {str(e)}")
                         # Fallback to chat completions if responses API fails
@@ -289,6 +291,8 @@ Write your response a JSON object with the following schema:
                             max_tokens=256
                         )
                         response_content = response.choices[0].message.content
+                        # Send token usage to main process
+                        print(f"TOKEN_USAGE:{response.usage.total_tokens}")
                 else:
                     logger.info(f"Using Ollama for file summary: {file_path}")
                     summary_response = ollama_client.chat(

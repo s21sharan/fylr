@@ -71,6 +71,23 @@ const chatSendBtn = document.getElementById('chatSendBtn');
 const modeToggle = document.getElementById('modeToggle');
 const limitsBox = document.querySelector('.limits-box');
 
+// Add rate limit elements
+const tokenLimitElement = document.querySelector('.token-limit');
+const callLimitElement = document.querySelector('.call-limit');
+
+// Add event listener for token usage updates
+ipcRenderer.on('update-token-usage', (event, usage) => {
+  if (tokenLimitElement) {
+    tokenLimitElement.textContent = `${usage}/10,000 tokens`;
+  }
+});
+
+ipcRenderer.on('update-call-usage', (event, usage) => {
+  if (callLimitElement) {
+    callLimitElement.textContent = `${usage}/10 calls`;
+  }
+});
+
 // Function to update limits box visibility
 function updateLimitsBoxVisibility() {
   if (modeToggle.checked) {
@@ -115,8 +132,36 @@ browseBtn.addEventListener('click', async () => {
   }
 });
 
-analyzeBtn.addEventListener('click', () => {
-  validateAndAnalyzeDirectory(directoryInput.value.trim());
+analyzeBtn.addEventListener('click', async () => {
+  if (!validateAndAnalyzeDirectory(directoryInput.value.trim())) return;
+  
+  // Check rate limits before proceeding
+  const canProceed = await checkRateLimits();
+  if (!canProceed) return;
+  
+  // Increment call counter
+  await ipcRenderer.invoke('update-call-usage');
+  
+  analyzeBtn.disabled = true;
+  loader.style.display = 'flex';
+  resultsContainer.style.display = 'none';
+  showMessage('Analyzing files and generating structure...', 'info');
+  
+  try {
+    const result = await ipcRenderer.invoke('analyze-directory', directoryInput.value.trim());
+    if (result && result.files) {
+      buildFileTree(result.files);
+      resultsContainer.style.display = 'block';
+      showMessage('Analysis complete!', 'success');
+    } else {
+      showMessage('Error: Invalid response from server', 'error');
+    }
+  } catch (error) {
+    showMessage(`Error: ${error.message}`, 'error');
+  } finally {
+    analyzeBtn.disabled = false;
+    loader.style.display = 'none';
+  }
 });
 
 // Add input event listener to enable/disable analyze button
@@ -578,11 +623,36 @@ tabButtons.forEach(button => {
   });
 });
 
-// Add validation and analysis function
+// Add IPC listeners for rate limit updates
+ipcRenderer.on('update-token-usage', (event, usage) => {
+  tokenLimitElement.textContent = `${usage}/${TOKEN_LIMIT} tokens`;
+});
+
+ipcRenderer.on('update-call-usage', (event, usage) => {
+  callLimitElement.textContent = `${usage}/${CALL_LIMIT} calls`;
+});
+
+// Add function to check rate limits before operations
+async function checkRateLimits() {
+  const limits = await ipcRenderer.invoke('check-rate-limits');
+  if (!limits.canProceed) {
+    showMessage(`Rate limit reached! ${limits.tokenUsage}/${limits.tokenLimit} tokens and ${limits.callUsage}/${limits.callLimit} calls used.`, 'error');
+    return false;
+  }
+  return true;
+}
+
+// Update analyze directory function
 async function validateAndAnalyzeDirectory(path) {
   if (!path) return;
   
   try {
+    // Check rate limits if in online mode
+    if (modeToggle.checked) {
+      const canProceed = await checkRateLimits();
+      if (!canProceed) return;
+    }
+    
     // First validate if the directory exists
     const isValid = await ipcRenderer.invoke('validate-directory', path);
     
@@ -749,9 +819,18 @@ generateNamesBtn.addEventListener('click', async () => {
   if (!filesToRename.length) return;
   
   try {
-    // Show loading state
+    // Check rate limits if in online mode
+    if (modeToggle.checked) {
+      const canProceed = await checkRateLimits();
+      if (!canProceed) return;
+    }
+    
+    // Increment call counter
+    await ipcRenderer.invoke('update-call-usage');
+    
     generateNamesBtn.disabled = true;
-    generateNamesBtn.textContent = 'Generating Names...';
+    renameApplyBtn.disabled = true;
+    showMessage('Generating new filenames...', 'info');
     
     const result = await ipcRenderer.invoke('generate-filenames', {
       files: filesToRename,
@@ -762,14 +841,14 @@ generateNamesBtn.addEventListener('click', async () => {
       generatedNames = result.generated_names;
       updateRenamePreview();
       renameApplyBtn.disabled = false;
+      showMessage('New filenames generated successfully!', 'success');
     } else {
-      showMessage(`Error generating names: ${result.error}`, 'error');
+      showMessage(`Error: ${result.error}`, 'error');
     }
   } catch (error) {
-    showMessage(`Error generating names: ${error.message}`, 'error');
+    showMessage(`Error: ${error.message}`, 'error');
   } finally {
     generateNamesBtn.disabled = false;
-    generateNamesBtn.textContent = 'Generate Names';
   }
 });
 

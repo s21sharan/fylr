@@ -78,6 +78,62 @@ def analyze_image_with_moondream(image_path):
         logger.error(f"Error analyzing image with Moondream: {str(e)}")
         return None
 
+def generate_file_name(summary, online_mode=True, max_length=30):
+    """Generate a very concise file name based on the file summary"""
+    logger.info(f"Using {'OpenAI' if online_mode else 'Local LLM'} for filename generation")
+    prompt = {
+        "task": "filename_generation",
+        "instruction": "You are given the summary of the contents of a file. Generate an extremely concise filename (2-4 words maximum) with underscores between words. Use general naming conventions. Do not include the file extension.",
+        "parameters": {
+            "max_length": max_length,
+            "format": "lowercase_with_underscores",
+            "max_words": 3,
+            "special_characters": "none",
+            "word_separator": "_"
+        },
+        "summary": summary
+    }
+    
+    if online_mode:
+        # Use OpenAI
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "user", "content": json.dumps(prompt)}
+            ],
+            temperature=0,
+            max_tokens=50
+        )
+        # Only track token usage for OpenAI
+        print(f"TOKEN_USAGE:{response.usage.total_tokens}")
+        filename = response.choices[0].message.content.strip()
+    else:
+        # Use local LLM - no token tracking
+        response = ollama_client.chat(
+            model='mistral',
+            messages=[{'role': 'user', 'content': json.dumps(prompt)}]
+        )
+        filename = response['message']['content'].strip()
+    
+    # Clean up the response
+    words = [word.strip().lower() for word in filename.split() if word.strip()]
+    filename = '_'.join(words)
+    filename = ''.join(c for c in filename if c.isalnum() or c == '_')
+    
+    if '_' not in filename and len(filename) > 3:
+        new_filename = ''
+        for i, char in enumerate(filename):
+            if i > 0 and char.isupper():
+                new_filename += '_' + char.lower()
+            else:
+                new_filename += char.lower()
+        filename = new_filename
+    
+    while '__' in filename:
+        filename = filename.replace('__', '_')
+    
+    return filename.strip('_')
+
 def generate_filenames(files, online_mode=True):
     """Generate new filenames for the given files"""
     try:
@@ -96,6 +152,9 @@ def generate_filenames(files, online_mode=True):
                 if online_mode:
                     logger.info("Using OpenAI Vision for image analysis")
                     summary = analyze_image_with_openai(file_path)
+                    # Only track token usage for OpenAI
+                    if summary and hasattr(summary, 'usage'):
+                        print(f"TOKEN_USAGE:{summary.usage.total_tokens}")
                 else:
                     logger.info("Using Moondream for image analysis")
                     summary = analyze_image_with_moondream(file_path)
@@ -103,6 +162,9 @@ def generate_filenames(files, online_mode=True):
                 # Get file summary using the function from file_organizer.py
                 logger.info(f"Getting file summary using {'OpenAI' if online_mode else 'local LLM'}")
                 summary = get_file_summary(file_path, online_mode)
+                # Only track token usage for OpenAI
+                if online_mode and summary and hasattr(summary, 'usage'):
+                    print(f"TOKEN_USAGE:{summary.usage.total_tokens}")
             
             if not summary:
                 logger.warning(f"No summary found for {file['name']}, skipping")
