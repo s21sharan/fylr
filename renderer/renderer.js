@@ -69,11 +69,26 @@ const chatSendBtn = document.getElementById('chatSendBtn');
 
 // Add mode toggle event listener
 const modeToggle = document.getElementById('modeToggle');
+const limitsBox = document.querySelector('.limits-box');
+
+// Function to update limits box visibility
+function updateLimitsBoxVisibility() {
+  if (modeToggle.checked) {
+    limitsBox.classList.add('visible');
+  } else {
+    limitsBox.classList.remove('visible');
+  }
+}
+
+// Initial state
+updateLimitsBoxVisibility();
+
 modeToggle.addEventListener('change', async (event) => {
   const isOnline = event.target.checked;
   await ipcRenderer.invoke('toggle-online-mode', isOnline);
   console.log(`Mode toggled to: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
   showMessage(`Mode set to ${isOnline ? 'ONLINE (OpenAI)' : 'OFFLINE (Local Models)'}`, 'info');
+  updateLimitsBoxVisibility();
 });
 
 // Function to get current mode state
