@@ -872,3 +872,54 @@ input:checked + .slider:before {
   font-size: 16px;
   margin-right: 4px;
 }
+
+/* Button with loading and success states */
+.primary-btn.loading,
+.primary-btn.success {
+  position: relative;
+  padding-left: 40px; /* Make room for the icon/spinner */
+  overflow: hidden;
+}
+
+.primary-btn.loading::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  margin-top: -8px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: button-spinner 0.6s linear infinite;
+}
+
+.primary-btn.success {
+  background-color: var(--success-color);
+}
+
+.primary-btn.success::before {
+  content: '✓';
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: white;
+  font-weight: bold;
+}
+
+@keyframes button-spinner {
+  to { transform: rotate(360deg); }
+}
+
+/* Fade transition for button text */
+.primary-btn.loading span,
+.primary-btn.success span {
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
