@@ -295,23 +295,23 @@ ipcMain.handle('toggle-online-mode', async (event, online) => {
 });
 
 // Update generate-filenames handler
-ipcMain.handle('generate-filenames', async (event, { files }) => {
+ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
   try {
     const configPath = path.join(app.getPath('temp'), 'rename_files_config.json');
     const scriptPath = path.join(__dirname, 'backend', 'rename_files.py');
     const pythonPath = getPythonPath();
 
-    debug('Generating filenames with config:', { files });
+    debug('Generating filenames with config:', { files, online_mode });
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'generate',
       files: files,
-      online_mode: isOnlineMode
+      online_mode: online_mode
     }));
 
     const options = {
       mode: 'text',
       pythonPath: pythonPath,
-      pythonOptions: ['-u'],  // Unbuffered output
+      pythonOptions: ['-u'],
       args: [configPath]
     };
 

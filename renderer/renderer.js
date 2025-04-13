@@ -67,6 +67,13 @@ const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
 
+// Add mode toggle event listener
+const modeToggle = document.getElementById('modeToggle');
+modeToggle.addEventListener('change', async (event) => {
+  const isOnline = event.target.checked;
+  await ipcRenderer.invoke('toggle-online-mode', isOnline);
+});
+
 function debugLog(message, data) {
   if (DEBUG) {
     if (data) {
@@ -711,6 +718,7 @@ renameDirectoryInput.addEventListener('input', () => {
   }
 });
 
+// Update generate names function
 generateNamesBtn.addEventListener('click', async () => {
   if (!filesToRename.length) return;
   
@@ -720,7 +728,8 @@ generateNamesBtn.addEventListener('click', async () => {
     generateNamesBtn.textContent = 'Generating Names...';
     
     const result = await ipcRenderer.invoke('generate-filenames', {
-      files: filesToRename
+      files: filesToRename,
+      online_mode: modeToggle.checked
     });
     
     if (result.success) {

@@ -51,16 +51,31 @@ def is_image_file(file_path):
 def classify_image(file_path, client):
     """Classify the contents of an image file using Moondream model"""
     try:
-        image = Image.open(file_path)
+        # Initialize Moondream model
         model = md.vl(model="/Users/sharans/Downloads/moondream-0_5b-int8.mf")
-        encoded_image = model.encode_image(image)
-        caption = model.caption(encoded_image)["caption"]
+        
+        # Load and process image
+        image = Image.open(file_path)
+        caption = model.caption(image)["caption"]
         
         if caption:
-            return f"Image containing {caption.lower()}"
+            # Use the caption with local LLM to generate a more structured summary
+            prompt = f"""Based on this image caption: "{caption}"
+Generate a concise summary suitable for file organization. Focus on the main subject and context.
+Return ONLY the summary text, no additional formatting or explanations."""
+            
+            response = client.chat(
+                model='mistral',
+                messages=[{'role': 'user', 'content': prompt}],
+                options={"temperature": 0, "num_predict": 100}
+            )
+            
+            summary = response['message']['content'].strip()
+            return f"Image containing {summary.lower()}"
         else:
             return f"Image file from {os.path.basename(file_path)}"
     except Exception as e:
+        print(f"Error analyzing image with Moondream: {str(e)}")
         return f"Image file from {os.path.basename(file_path)}"
 
 def generate_file_name(client, summary, max_length=30):
@@ -107,16 +122,8 @@ def get_file_summary(file_path, client, image_classifier=None):
     """Get summary for a single file"""
     try:
         if is_image_file(file_path):
-            if image_classifier:
-                try:
-                    image = Image.open(file_path)
-                    result = image_classifier(image)
-                    label = result[0]['label'].replace('_', ' ')
-                    return f"Image containing {label.lower()}"
-                except Exception:
-                    return classify_image(file_path, client)
-            else:
-                return classify_image(file_path, client)
+            # Always use Moondream for image analysis in local mode
+            return classify_image(file_path, client)
         else:
             text = ""
             if file_path.lower().endswith('.pdf'):
@@ -162,7 +169,7 @@ Write your response a JSON object with the following schema:
                 )
                 
                 try:
-                    response_content = summary_response['message']['content'].strip()
+                    response_content = summary_response['message']['content']
                     json_start = response_content.find('{')
                     json_end = response_content.rfind('}') + 1
                     if json_start >= 0 and json_end > json_start:
@@ -170,12 +177,14 @@ Write your response a JSON object with the following schema:
                         result = json.loads(json_str)
                         return result["summary"]
                     else:
-                        return response_content
-                except Exception:
-                    return summary_response['message']['content'].strip()
+                        return response_content.strip()
+                except Exception as e:
+                    print(f"Error parsing JSON response: {str(e)}")
+                    return response_content.strip()
             else:
                 return None
-    except Exception:
+    except Exception as e:
+        print(f"Error processing {file_path}: {str(e)}")
         return None
 
 def get_file_hash(file_path):

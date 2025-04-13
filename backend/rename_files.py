@@ -7,6 +7,8 @@ from openai import OpenAI
 from ollama import Client
 from dotenv import load_dotenv
 from file_organizer import get_file_summary, generate_file_name
+import moondream as md
+from PIL import Image
 
 # Load environment variables
 load_dotenv()
@@ -43,6 +45,30 @@ except Exception as e:
     logger.error(f"Failed to initialize Ollama client: {str(e)}")
     raise
 
+# Initialize Moondream model for image analysis
+try:
+    moondream_model = md.vl(model="/Users/sharans/Downloads/moondream-0_5b-int8.mf")
+    logger.info("Moondream model initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Moondream model: {str(e)}")
+    raise
+
+def is_image_file(file_path):
+    """Check if a file is an image based on its extension"""
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'}
+    return os.path.splitext(file_path)[1].lower() in image_extensions
+
+def analyze_image_with_moondream(image_path):
+    """Analyze image using Moondream model"""
+    try:
+        image = Image.open(image_path)
+        result = moondream_model.caption(image)
+        caption = result["caption"]
+        return f"Image containing {caption.lower()}"
+    except Exception as e:
+        logger.error(f"Error analyzing image with Moondream: {str(e)}")
+        return None
+
 def generate_filenames(files, online_mode=True):
     """Generate new filenames for the given files"""
     try:
@@ -56,9 +82,15 @@ def generate_filenames(files, online_mode=True):
             
             logger.info(f"Processing file: {file_path}")
             
-            # Get file summary using the function from file_organizer.py
-            logger.info(f"Getting file summary using {'OpenAI' if online_mode else 'local LLM'}")
-            summary = get_file_summary(file_path, online_mode)
+            # For images in local mode, use Moondream
+            if not online_mode and is_image_file(file_path):
+                logger.info("Using Moondream for image analysis")
+                summary = analyze_image_with_moondream(file_path)
+            else:
+                # Get file summary using the function from file_organizer.py
+                logger.info(f"Getting file summary using {'OpenAI' if online_mode else 'local LLM'}")
+                summary = get_file_summary(file_path, online_mode)
+            
             if not summary:
                 logger.warning(f"No summary found for {file['name']}, skipping")
                 continue
