@@ -290,10 +290,15 @@ ipcMain.handle('get-files', async (event, directoryPath) => {
     const files = await fs.promises.readdir(directoryPath, { withFileTypes: true });
     return files
       .filter(file => file.isFile())
-      .map(file => ({
-        name: file.name,
-        path: path.join(directoryPath, file.name)
-      }));
+      .map(file => {
+        const filePath = path.join(directoryPath, file.name);
+        const stats = fs.statSync(filePath);
+        return {
+          name: file.name,
+          path: filePath,
+          size: stats.size // File size in bytes
+        };
+      });
   } catch (error) {
     console.error('Error reading directory:', error);
     throw error;
@@ -389,17 +394,28 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
 });
 
 // Update rename-files handler
-ipcMain.handle('rename-files', async (event, { files, new_names }) => {
+ipcMain.handle('rename-files', async (event, filesToProcess) => {
   try {
     const configPath = path.join(app.getPath('temp'), 'rename_files_config.json');
     const scriptPath = path.join(__dirname, 'backend', 'rename_files.py');
     const pythonPath = getPythonPath();
 
+    // Convert the file list to the format expected by the Python script
+    const files = filesToProcess.map(file => ({
+      path: file.oldPath,
+      name: path.basename(file.oldPath)
+    }));
+    
+    const new_names = {};
+    filesToProcess.forEach(file => {
+      new_names[path.basename(file.oldPath)] = file.newName;
+    });
+
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'rename',
       files: files,
       new_names: new_names,
-      online_mode: isOnlineMode  // Include online mode in config
+      online_mode: isOnlineMode
     }));
 
     const options = {

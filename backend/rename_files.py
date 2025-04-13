@@ -198,42 +198,77 @@ def generate_filenames(files, online_mode=True):
 def rename_files(files, new_names):
     """Rename files using the provided new names"""
     try:
-        logger.info(f"Starting file renaming process for {len(files)} files")
+        logger.info(f"Starting file renaming process")
+        logger.info(f"Files to process: {json.dumps(files, indent=2)}")
+        logger.info(f"New names mapping: {json.dumps(new_names, indent=2)}")
+        
         results = []
         for file in files:
-            file_path = file['path']
-            new_name = new_names.get(file['name'])
-            
-            if not new_name or new_name == file['name']:
-                logger.info(f"Skipping {file['name']} - no new name provided or name unchanged")
-                continue
+            try:
+                file_path = file['path']
+                original_name = file['name']
+                new_name = new_names.get(original_name)
                 
-            # Ensure unique filename
-            directory = os.path.dirname(file_path)
-            base, ext = os.path.splitext(new_name)
-            counter = 1
-            while os.path.exists(os.path.join(directory, new_name)):
-                new_name = f"{base}_{counter}{ext}"
-                counter += 1
-            
-            # Rename the file
-            new_path = os.path.join(directory, new_name)
-            os.rename(file_path, new_path)
-            logger.info(f"Renamed {file['name']} to {new_name}")
-            
-            results.append({
-                "original": file['name'],
-                "new": new_name
-            })
-            
-        logger.info(f"Successfully renamed {len(results)} files")
-        return {
-            "success": True,
-            "renamed_files": results
-        }
+                if not new_name or new_name == original_name:
+                    logger.info(f"Skipping {original_name} - no new name provided or name unchanged")
+                    continue
+                
+                # Get directory and construct new path
+                directory = os.path.dirname(file_path)
+                new_path = os.path.join(directory, new_name)
+                
+                logger.info(f"Processing rename operation:")
+                logger.info(f"  Original path: {file_path}")
+                logger.info(f"  New path: {new_path}")
+                
+                # Ensure the new name is unique
+                base, ext = os.path.splitext(new_name)
+                counter = 1
+                while os.path.exists(new_path):
+                    new_name = f"{base}_{counter}{ext}"
+                    new_path = os.path.join(directory, new_name)
+                    counter += 1
+                    logger.info(f"  Adjusted new path (for uniqueness): {new_path}")
+                
+                # Check if source file exists
+                if not os.path.exists(file_path):
+                    logger.error(f"Source file does not exist: {file_path}")
+                    continue
+                
+                # Check if we have write permission
+                if not os.access(os.path.dirname(file_path), os.W_OK):
+                    logger.error(f"No write permission for directory: {os.path.dirname(file_path)}")
+                    continue
+                
+                # Perform the rename operation
+                os.rename(file_path, new_path)
+                logger.info(f"Successfully renamed {original_name} to {new_name}")
+                
+                results.append({
+                    "original": original_name,
+                    "new": new_name
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing file {file.get('name', 'unknown')}: {str(e)}")
+                continue
+        
+        if results:
+            logger.info(f"Successfully renamed {len(results)} files")
+            logger.info(f"Rename results: {json.dumps(results, indent=2)}")
+            return {
+                "success": True,
+                "renamed_files": results
+            }
+        else:
+            logger.warning("No files were renamed")
+            return {
+                "success": False,
+                "error": "No files were renamed"
+            }
         
     except Exception as e:
-        logger.error(f"Error renaming files: {str(e)}", exc_info=True)
+        logger.error(f"Error in rename_files: {str(e)}", exc_info=True)
         return {
             "success": False,
             "error": str(e)
