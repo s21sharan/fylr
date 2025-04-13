@@ -151,14 +151,48 @@ analyzeBtn.addEventListener('click', async () => {
   
   try {
     const result = await ipcRenderer.invoke('analyze-directory', directoryInput.value.trim());
-    if (result && result.files) {
-      buildFileTree(result.files);
-      resultsContainer.style.display = 'block';
-      showMessage('Analysis complete!', 'success');
+    console.log('Result from analyze-directory:', result);
+    
+    // Validate the result structure
+    if (result) {
+      // Check if result is a string (JSON)
+      if (typeof result === 'string') {
+        try {
+          // Parse the JSON string
+          const parsedResult = JSON.parse(result);
+          if (parsedResult && parsedResult.files && Array.isArray(parsedResult.files)) {
+            buildFileTree(parsedResult);
+            resultsContainer.style.display = 'block';
+            showMessage('Analysis complete!', 'success');
+          } else {
+            console.error('Invalid parsed result structure:', parsedResult);
+            showMessage('Error: Invalid response format from server', 'error');
+          }
+        } catch (parseError) {
+          console.error('Error parsing JSON result:', parseError);
+          showMessage('Error: Failed to parse response from server', 'error');
+        }
+      } 
+      // Check if it's an object with a files array
+      else if (result.files && Array.isArray(result.files)) {
+        buildFileTree(result);
+        resultsContainer.style.display = 'block';
+        showMessage('Analysis complete!', 'success');
+      } 
+      // If it's just an array, wrap it in an object
+      else if (Array.isArray(result)) {
+        buildFileTree({ files: result });
+        resultsContainer.style.display = 'block';
+        showMessage('Analysis complete!', 'success');
+      } else {
+        console.error('Invalid result structure:', result);
+        showMessage('Error: Invalid response from server', 'error');
+      }
     } else {
-      showMessage('Error: Invalid response from server', 'error');
+      showMessage('Error: No response from server', 'error');
     }
   } catch (error) {
+    console.error('Error during analysis:', error);
     showMessage(`Error: ${error.message}`, 'error');
   } finally {
     analyzeBtn.disabled = false;
@@ -206,6 +240,24 @@ applyBtn.addEventListener('click', async () => {
 
 // Build file tree visualization with drag-and-drop support
 function buildFileTree(data) {
+  console.log('buildFileTree called with data:', data);
+  
+  // Safety check for data
+  if (!data) {
+    console.error('No data provided to buildFileTree');
+    showMessage('Error: No file structure data available', 'error');
+    return;
+  }
+  
+  // Ensure data.files exists and is an array
+  if (!data.files || !Array.isArray(data.files)) {
+    console.error('data.files is not an array:', data.files);
+    showMessage('Error: Invalid file structure format', 'error');
+    
+    // Initialize with empty array if missing
+    data = { files: [] };
+  }
+  
   // Store original data for reset
   originalFileStructure = JSON.parse(JSON.stringify(data));
   currentStructure = JSON.parse(JSON.stringify(data));
@@ -219,6 +271,12 @@ function buildFileTree(data) {
   for (const file of data.files) {
     const srcPath = file.src_path;
     const dstPath = file.dst_path;
+    
+    // Skip files with missing paths
+    if (!srcPath || !dstPath) {
+      console.warn('Skipping file with missing paths:', file);
+      continue;
+    }
     
     // Get destination directory
     const lastSlashIndex = dstPath.lastIndexOf('/');
@@ -678,21 +736,57 @@ async function validateAndAnalyzeDirectory(path) {
     const testJsonExists = await ipcRenderer.invoke('check-test-json');
     
     let startTime = performance.now();
+    let rawData;
     
     if (testJsonExists) {
       // Use test.json instead of running analysis
       debugLog('Found test.json in project root, using it instead of running full analysis');
-      fileStructureData = await ipcRenderer.invoke('read-test-json');
+      rawData = await ipcRenderer.invoke('read-test-json');
     } else {
       // Call backend to analyze directory as normal
       debugLog('No test.json found in project root, running full analysis');
-      fileStructureData = await ipcRenderer.invoke('analyze-directory', path);
+      rawData = await ipcRenderer.invoke('analyze-directory', path);
     }
     
     const endTime = performance.now();
-    
     debugLog(`Process completed in ${(endTime - startTime) / 1000} seconds`);
-    debugLog("File structure data received:", fileStructureData);
+    debugLog("Raw data received:", rawData);
+    
+    // Ensure we have a valid data structure
+    if (!rawData) {
+      showMessage('Error: No data received from analysis', 'error');
+      loader.style.display = 'none';
+      return false;
+    }
+    
+    // Convert from string to object if necessary
+    if (typeof rawData === 'string') {
+      try {
+        rawData = JSON.parse(rawData);
+        debugLog("Parsed JSON data:", rawData);
+      } catch (parseError) {
+        debugLog("Failed to parse JSON:", parseError);
+        showMessage('Error: Invalid response format from server', 'error');
+        loader.style.display = 'none';
+        return false;
+      }
+    }
+    
+    // Ensure we have a valid files array
+    if (!rawData.files && Array.isArray(rawData)) {
+      // If rawData is an array, assume it's the files array
+      fileStructureData = { files: rawData };
+    } else if (rawData.files && Array.isArray(rawData.files)) {
+      // If rawData has a files property that's an array, use it as is
+      fileStructureData = rawData;
+    } else {
+      // Default to an empty files array
+      debugLog("Invalid data structure, defaulting to empty files array");
+      fileStructureData = { files: [] };
+      showMessage('Warning: No valid files found in analysis result', 'error');
+    }
+    
+    debugLog("Processed file structure data:", fileStructureData);
     
     // Build the file tree visualization
     buildFileTree(fileStructureData);
@@ -701,10 +795,12 @@ async function validateAndAnalyzeDirectory(path) {
     loader.style.display = 'none';
     resultsContainer.style.display = 'block';
     
+    return true;
   } catch (error) {
     debugLog("Error during analysis:", error);
     loader.style.display = 'none';
     showMessage(`Error analyzing directory: ${error.message}`, 'error');
+    return false;
   }
 }
 
@@ -905,6 +1001,8 @@ function updateRenamePreview() {
     const originalName = document.createElement('div');
     originalName.className = 'original';
     originalName.textContent = file.name;
+    // Add tooltip data attribute for long filenames
+    originalName.setAttribute('data-tooltip', file.name);
     
     // New name container
     const newName = document.createElement('div');
@@ -912,7 +1010,10 @@ function updateRenamePreview() {
     
     // Text display
     const newNameText = document.createElement('span');
-    newNameText.textContent = generatedNames[file.name] || file.name;
+    const displayName = generatedNames[file.name] || file.name;
+    newNameText.textContent = displayName;
+    // Add tooltip data attribute for long filenames
+    newNameText.setAttribute('data-tooltip', displayName);
     
     // Input field (hidden by default)
     const newNameInput = document.createElement('input');
@@ -923,6 +1024,8 @@ function updateRenamePreview() {
       if (newNameInput.value.trim() !== '') {
         generatedNames[file.name] = newNameInput.value;
         newNameText.textContent = newNameInput.value;
+        // Update tooltip when the name changes
+        newNameText.setAttribute('data-tooltip', newNameInput.value);
         updateRenameButtons();
       }
     });
