@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 from file_organizer import get_file_summary, generate_file_name
 import moondream as md
 from PIL import Image
+import base64
+
+# Import the analyze_image_with_openai function
+from test_openai_vision import analyze_image_with_openai
 
 # Load environment variables
 load_dotenv()
@@ -58,6 +62,11 @@ def is_image_file(file_path):
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'}
     return os.path.splitext(file_path)[1].lower() in image_extensions
 
+def encode_image_to_base64(image_path):
+    """Encode image to base64 string"""
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
 def analyze_image_with_moondream(image_path):
     """Analyze image using Moondream model"""
     try:
@@ -82,10 +91,14 @@ def generate_filenames(files, online_mode=True):
             
             logger.info(f"Processing file: {file_path}")
             
-            # For images in local mode, use Moondream
-            if not online_mode and is_image_file(file_path):
-                logger.info("Using Moondream for image analysis")
-                summary = analyze_image_with_moondream(file_path)
+            # For images, use appropriate model based on mode
+            if is_image_file(file_path):
+                if online_mode:
+                    logger.info("Using OpenAI Vision for image analysis")
+                    summary = analyze_image_with_openai(file_path)
+                else:
+                    logger.info("Using Moondream for image analysis")
+                    summary = analyze_image_with_moondream(file_path)
             else:
                 # Get file summary using the function from file_organizer.py
                 logger.info(f"Getting file summary using {'OpenAI' if online_mode else 'local LLM'}")
