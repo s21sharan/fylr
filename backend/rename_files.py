@@ -7,9 +7,8 @@ from openai import OpenAI
 from ollama import Client
 from dotenv import load_dotenv
 from file_organizer import get_file_summary, generate_file_name
-import moondream as md
-from PIL import Image
 import base64
+from PIL import Image
 
 # Import the analyze_image_with_openai function
 from test_openai_vision import analyze_image_with_openai
@@ -30,32 +29,40 @@ logging.basicConfig(
 logger = logging.getLogger('file_renamer')
 
 # Initialize OpenAI client (will be used only in online mode)
+openai_client = None
 try:
     openai_api_key = os.getenv('OPENAI_API_KEY')
-    if not openai_api_key:
-        logger.error("OPENAI_API_KEY not found in environment variables")
-        raise ValueError("OPENAI_API_KEY environment variable is required for online mode")
-    openai_client = OpenAI(api_key=openai_api_key)
-    logger.info("OpenAI client initialized successfully")
+    if openai_api_key:
+        openai_client = OpenAI(api_key=openai_api_key)
+        logger.info("OpenAI client initialized successfully")
+    else:
+        logger.warning("OPENAI_API_KEY not found in environment variables. Online mode will not be available.")
 except Exception as e:
     logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-    raise
 
 # Initialize Ollama client (will be used only in offline mode)
+ollama_client = None
 try:
     ollama_client = Client(host="http://localhost:11434")
     logger.info("Ollama client initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize Ollama client: {str(e)}")
-    raise
 
 # Initialize Moondream model for image analysis
+moondream_model = None
 try:
-    moondream_model = md.vl(model="/Users/sharans/Downloads/moondream-0_5b-int8.mf")
-    logger.info("Moondream model initialized successfully")
+    # Only import moondream if we're going to use it
+    import moondream as md
+    model_path = "/Users/sharans/Downloads/moondream-0_5b-int8.mf"
+    if os.path.exists(model_path):
+        moondream_model = md.vl(model=model_path)
+        logger.info("Moondream model initialized successfully")
+    else:
+        logger.warning(f"Moondream model file not found at: {model_path}")
+except ImportError:
+    logger.warning("Moondream package not installed. Simple image analysis will be used for offline mode.")
 except Exception as e:
     logger.error(f"Failed to initialize Moondream model: {str(e)}")
-    raise
 
 def is_image_file(file_path):
     """Check if a file is an image based on its extension"""
@@ -68,15 +75,45 @@ def encode_image_to_base64(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def analyze_image_with_moondream(image_path):
-    """Analyze image using Moondream model"""
+    """Analyze image using Moondream model or fallback to basic analysis"""
     try:
         image = Image.open(image_path)
-        result = moondream_model.caption(image)
-        caption = result["caption"]
-        return f"Image containing {caption.lower()}"
+        
+        # If Moondream is available, use it
+        if moondream_model:
+            result = moondream_model.caption(image)
+            caption = result["caption"]
+            return f"Image containing {caption.lower()}"
+        
+        # Otherwise, use a simple fallback method
+        width, height = image.size
+        format_name = image.format
+        mode = image.mode
+        
+        # Very basic image info without ML analysis
+        image_summary = f"Image ({width}x{height} {format_name})"
+        
+        # If Ollama is available, try to use it for a better description based on this basic info
+        if ollama_client:
+            try:
+                prompt = f"""Based on these image details: {width}x{height} {format_name} image named '{os.path.basename(image_path)}',
+generate a very concise description that might help organize the file. Focus on what could be in this image based on the filename."""
+                
+                response = ollama_client.chat(
+                    model='mistral',
+                    messages=[{'role': 'user', 'content': prompt}],
+                    options={"temperature": 0, "num_predict": 100}
+                )
+                
+                summary = response['message']['content'].strip()
+                return f"Image possibly containing {summary.lower()}"
+            except:
+                pass
+        
+        return image_summary
     except Exception as e:
-        logger.error(f"Error analyzing image with Moondream: {str(e)}")
-        return None
+        logger.error(f"Error analyzing image with local methods: {str(e)}")
+        return f"Image file: {os.path.basename(image_path)}"
 
 def generate_file_name(summary, online_mode=True, max_length=30):
     """Generate a very concise file name based on the file summary"""
@@ -105,7 +142,8 @@ def generate_file_name(summary, online_mode=True, max_length=30):
             max_tokens=50
         )
         # Only track token usage for OpenAI
-        print(f"TOKEN_USAGE:{response.usage.total_tokens}")
+        if online_mode:
+            print(f"TOKEN_USAGE:{response.usage.total_tokens}")
         filename = response.choices[0].message.content.strip()
     else:
         # Use local LLM - no token tracking
@@ -152,8 +190,8 @@ def generate_filenames(files, online_mode=True):
                 if online_mode:
                     logger.info("Using OpenAI Vision for image analysis")
                     summary = analyze_image_with_openai(file_path)
-                    # Only track token usage for OpenAI
-                    if summary and hasattr(summary, 'usage'):
+                    # Only track token usage for OpenAI in online mode
+                    if online_mode and summary and hasattr(summary, 'usage'):
                         print(f"TOKEN_USAGE:{summary.usage.total_tokens}")
                 else:
                     logger.info("Using Moondream for image analysis")
@@ -162,7 +200,7 @@ def generate_filenames(files, online_mode=True):
                 # Get file summary using the function from file_organizer.py
                 logger.info(f"Getting file summary using {'OpenAI' if online_mode else 'local LLM'}")
                 summary = get_file_summary(file_path, online_mode)
-                # Only track token usage for OpenAI
+                # Only track token usage for OpenAI in online mode
                 if online_mode and summary and hasattr(summary, 'usage'):
                     print(f"TOKEN_USAGE:{summary.usage.total_tokens}")
             

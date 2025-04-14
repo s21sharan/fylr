@@ -10,10 +10,9 @@ import mimetypes
 import hashlib
 import csv
 import time
-import moondream as md
+import base64
 from dotenv import load_dotenv
 import logging
-import base64
 
 # Load environment variables
 load_dotenv()
@@ -41,32 +40,40 @@ logger.addHandler(console_handler)
 logging.getLogger().setLevel(logging.DEBUG)
 
 # Initialize OpenAI client (will be used only in online mode)
+openai_client = None
 try:
     openai_api_key = os.getenv('OPENAI_API_KEY')
-    if not openai_api_key:
-        logger.error("OPENAI_API_KEY not found in environment variables")
-        raise ValueError("OPENAI_API_KEY environment variable is required for online mode")
-    openai_client = OpenAI(api_key=openai_api_key)
-    logger.info("OpenAI client initialized successfully")
+    if openai_api_key:
+        openai_client = OpenAI(api_key=openai_api_key)
+        logger.info("OpenAI client initialized successfully")
+    else:
+        logger.warning("OPENAI_API_KEY not found in environment variables. Online mode will not be available.")
 except Exception as e:
     logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-    raise
 
 # Initialize Ollama client (will be used only in offline mode)
+ollama_client = None
 try:
     ollama_client = Client(host="http://localhost:11434")
     logger.info("Ollama client initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize Ollama client: {str(e)}")
-    raise
 
 # Initialize Moondream model for image analysis
+moondream_model = None
 try:
-    moondream_model = md.vl(model="/Users/sharans/Downloads/moondream-0_5b-int8.mf")
-    logger.info("Moondream model initialized successfully")
+    # Only import moondream if we're going to use it
+    import moondream as md
+    model_path = "/Users/sharans/Downloads/moondream-0_5b-int8.mf"
+    if os.path.exists(model_path):
+        moondream_model = md.vl(model=model_path)
+        logger.info("Moondream model initialized successfully")
+    else:
+        logger.warning(f"Moondream model file not found at: {model_path}")
+except ImportError:
+    logger.warning("Moondream package not installed. Simple image analysis will be used for offline mode.")
 except Exception as e:
     logger.error(f"Failed to initialize Moondream model: {str(e)}")
-    raise
 
 FILE_PROMPT = """
 You are an AI assistant tasked with organizing files based on their summaries. You will be provided with a list of source files and a summary of their contents. Your goal is to organize these files by adding ONE category subfolder to their existing path structure.
@@ -116,7 +123,7 @@ def classify_image(file_path, online_mode=False):
     """Classify the contents of an image file using Moondream model or OpenAI Vision"""
     online_mode = log_mode_usage("classify_image", online_mode)
     try:
-        if online_mode:
+        if online_mode and openai_client:
             # Use OpenAI Vision API
             logger.info(f"Using OpenAI Vision API for image: {file_path}")
             with open(file_path, "rb") as image_file:
@@ -140,31 +147,72 @@ def classify_image(file_path, online_mode=False):
                 ],
                 max_tokens=300
             )
+            # Send token usage to main process ONLY in online mode
+            if online_mode and hasattr(response, 'usage'):
+                print(f"TOKEN_USAGE:{response.usage.total_tokens}")
             summary = response.choices[0].message.content.strip()
             logger.info(f"OpenAI Vision Summary: {summary}")
             return f"Image containing {summary.lower()}"
         else:
-            # Use local Moondream model
-            logger.info(f"Using Moondream for image: {file_path}")
-            image = Image.open(file_path)
-            caption = moondream_model.caption(image)["caption"]
-            
-            if caption:
-                # Use the caption with local LLM to generate a more structured summary
-                prompt = f"""Based on this image caption: "{caption}"
+            # Use local methods
+            # First try Moondream if available
+            if moondream_model:
+                logger.info(f"Using Moondream for image: {file_path}")
+                image = Image.open(file_path)
+                caption = moondream_model.caption(image)["caption"]
+                
+                if caption:
+                    # Use the caption with local LLM to generate a more structured summary
+                    if ollama_client:
+                        prompt = f"""Based on this image caption: "{caption}"
 Generate a concise summary suitable for file organization. Focus on the main subject and context.
 Return ONLY the summary text, no additional formatting or explanations."""
+                        
+                        response = ollama_client.chat(
+                            model='mistral',
+                            messages=[{'role': 'user', 'content': prompt}],
+                            options={"temperature": 0, "num_predict": 100}
+                        )
+                        
+                        summary = response['message']['content'].strip()
+                        logger.info(f"Moondream Summary: {summary}")
+                        return f"Image containing {summary.lower()}"
+                    else:
+                        # No Ollama available, just use the caption directly
+                        return f"Image containing {caption.lower()}"
                 
-                response = ollama_client.chat(
-                    model='mistral',
-                    messages=[{'role': 'user', 'content': prompt}],
-                    options={"temperature": 0, "num_predict": 100}
-                )
+            # If Moondream is not available or failed, use basic image analysis
+            logger.info(f"Using basic image analysis for: {file_path}")
+            try:
+                image = Image.open(file_path)
+                width, height = image.size
+                format_name = image.format
+                mode = image.mode
                 
-                summary = response['message']['content'].strip()
-                logger.info(f"Moondream Summary: {summary}")
-                return f"Image containing {summary.lower()}"
-            else:
+                # Very basic image info without ML analysis
+                image_summary = f"Image ({width}x{height} {format_name})"
+                
+                # If Ollama is available, try to use it for a better description based on this basic info
+                if ollama_client:
+                    try:
+                        filename = os.path.basename(file_path)
+                        prompt = f"""Based on these image details: {width}x{height} {format_name} image named '{filename}',
+generate a very concise description that might help organize the file. Focus on what could be in this image based on the filename."""
+                        
+                        response = ollama_client.chat(
+                            model='mistral',
+                            messages=[{'role': 'user', 'content': prompt}],
+                            options={"temperature": 0, "num_predict": 100}
+                        )
+                        
+                        summary = response['message']['content'].strip()
+                        return f"Image possibly containing {summary.lower()}"
+                    except Exception as inner_e:
+                        logger.error(f"Error using Ollama for image description: {str(inner_e)}")
+                
+                return image_summary
+            except Exception as img_e:
+                logger.error(f"Error in basic image analysis: {str(img_e)}")
                 return f"Image file from {os.path.basename(file_path)}"
     except Exception as e:
         logger.error(f"Error analyzing image: {str(e)}")
@@ -276,8 +324,9 @@ Write your response a JSON object with the following schema:
                             max_tokens=256
                         )
                         response_content = response.output_text
-                        # Send token usage to main process
-                        print(f"TOKEN_USAGE:{response.usage.total_tokens}")
+                        # Send token usage to main process ONLY in online mode
+                        if online_mode:
+                            print(f"TOKEN_USAGE:{response.usage.total_tokens}")
                     except Exception as e:
                         logger.error(f"Error using OpenAI responses API: {str(e)}")
                         # Fallback to chat completions if responses API fails
@@ -291,8 +340,9 @@ Write your response a JSON object with the following schema:
                             max_tokens=256
                         )
                         response_content = response.choices[0].message.content
-                        # Send token usage to main process
-                        print(f"TOKEN_USAGE:{response.usage.total_tokens}")
+                        # Send token usage to main process ONLY in online mode
+                        if online_mode:
+                            print(f"TOKEN_USAGE:{response.usage.total_tokens}")
                 else:
                     logger.info(f"Using Ollama for file summary: {file_path}")
                     summary_response = ollama_client.chat(
