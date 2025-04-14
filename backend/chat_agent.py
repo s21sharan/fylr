@@ -3,13 +3,35 @@ from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.llms import Ollama
+from langchain.chat_models import ChatOpenAI
+from openai import OpenAI
 import json
 import os
+from dotenv import load_dotenv
 
 class FileOrganizationAgent:
-    def __init__(self, client):
+    def __init__(self, client=None, online_mode=False):
         self.client = client
-        self.llm = Ollama(base_url="http://localhost:11434", model="mistral")
+        self.online_mode = online_mode
+        load_dotenv()
+        
+        # Initialize the appropriate LLM based on mode
+        if online_mode:
+            # Use OpenAI in online mode
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+            if not openai_api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is required for online mode")
+            
+            # Initialize both the LangChain and direct OpenAI clients
+            self.llm = ChatOpenAI(temperature=0, model_name="gpt-4-turbo-preview", openai_api_key=openai_api_key)
+            self.openai_client = OpenAI(api_key=openai_api_key)
+            print("Using OpenAI for chat agent in online mode")
+        else:
+            # Use local Ollama model in offline mode
+            self.llm = Ollama(base_url="http://localhost:11434", model="mistral")
+            self.openai_client = None
+            print("Using local Ollama model for chat agent in offline mode")
+            
         self.memory = ConversationBufferMemory(
             memory_key="chat_history",
             input_key="instruction",
@@ -63,13 +85,50 @@ class FileOrganizationAgent:
         file_structure_str = json.dumps(current_file_structure, indent=2)
         
         print("[DEBUG] User instruction:", message)
-        print("[DEBUG] Current file structure:", file_structure_str)
+        print("[DEBUG] Current file structure length:", len(file_structure_str))
+        print(f"[DEBUG] Using {'OpenAI' if self.online_mode else 'Local LLM'} for chat assistant")
 
-        # Get response from LLM
-        response = self.chain.run(
-            file_structure=file_structure_str,
-            instruction=message
-        )
+        # Process differently based on mode
+        if self.online_mode and self.openai_client:
+            # Direct OpenAI API call for better token tracking
+            try:
+                prompt = self.prompt_template.format(
+                    file_structure=file_structure_str,
+                    instruction=message,
+                    chat_history=str(self.memory.chat_memory.messages)
+                )
+                
+                response_obj = self.openai_client.chat.completions.create(
+                    model="gpt-4-turbo-preview",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0
+                )
+                
+                # Track token usage
+                if hasattr(response_obj, 'usage') and response_obj.usage:
+                    token_usage = response_obj.usage.total_tokens
+                    print(f"TOKEN_USAGE:{token_usage}")
+                
+                # Get response text
+                response = response_obj.choices[0].message.content
+                
+                # Update memory manually
+                self.memory.chat_memory.add_user_message(message)
+                self.memory.chat_memory.add_ai_message(response)
+                
+            except Exception as e:
+                print(f"Error calling OpenAI API directly: {str(e)}")
+                # Fall back to LangChain
+                response = self.chain.run(
+                    file_structure=file_structure_str,
+                    instruction=message
+                )
+        else:
+            # Use LangChain with Ollama for offline mode
+            response = self.chain.run(
+                file_structure=file_structure_str,
+                instruction=message
+            )
         
         print("[DEBUG] LLM response:", response)
         

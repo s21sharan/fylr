@@ -249,6 +249,18 @@ ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) =>
     const scriptPath = path.join(__dirname, 'backend', 'chat_agent_runner.py');
     const pythonPath = getPythonPath();
 
+    // Check for API key in online mode
+    if (isOnlineMode) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        debug('WARNING: OpenAI API key not found but online mode requested for chat');
+        return {
+          message: "OpenAI API key not found. Please add your API key or switch to offline mode.",
+          updatedFileStructure: null
+        };
+      }
+    }
+
     // Include the current online mode in the configuration
     fs.writeFileSync(configPath, JSON.stringify({
       message,
@@ -271,7 +283,16 @@ ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) =>
       PythonShell.run(scriptPath, options, (err, results) => {
         if (err) {
           console.error('Chat agent error:', err);
-          reject(err);
+          
+          // Provide a more helpful error message
+          if (err.message && err.message.includes('OPENAI_API_KEY environment variable is required')) {
+            resolve({
+              message: "OpenAI API key not found. Please add your API key or switch to offline mode.",
+              updatedFileStructure: null
+            });
+          } else {
+            reject(err);
+          }
           return;
         }
 
