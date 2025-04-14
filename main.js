@@ -128,7 +128,8 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
       let foundRawLLMResponse = false;
       
       for (const line of results) {
-        if (line.startsWith('TOKEN_USAGE:')) {
+        if (line.startsWith('TOKEN_USAGE:') && isOnlineMode) {
+          // Only track tokens and calls in online mode
           const tokens = parseInt(line.split(':')[1]);
           updateTokenUsage(tokens);
           updateCallUsage();
@@ -181,7 +182,8 @@ ipcMain.handle('analyze-directory', async (event, directoryPath) => {
     
     // Handle process output
     pythonProcess.on('message', (message) => {
-      if (message.startsWith('TOKEN_USAGE:')) {
+      if (message.startsWith('TOKEN_USAGE:') && isOnlineMode) {
+        // Only track tokens and calls in online mode
         const tokens = parseInt(message.split(':')[1]);
         updateTokenUsage(tokens);
         updateCallUsage();
@@ -247,10 +249,17 @@ ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) =>
     const scriptPath = path.join(__dirname, 'backend', 'chat_agent_runner.py');
     const pythonPath = getPythonPath();
 
+    // Include the current online mode in the configuration
     fs.writeFileSync(configPath, JSON.stringify({
       message,
-      currentFileStructure
+      currentFileStructure,
+      online_mode: isOnlineMode
     }));
+
+    // Only update call usage in online mode
+    if (isOnlineMode) {
+      updateCallUsage();
+    }
 
     const options = {
       mode: 'text',
@@ -268,7 +277,23 @@ ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) =>
         }
 
         try {
-          const lastLine = results[results.length - 1];
+          // Process results for token usage tracking
+          let lastLine = '';
+          for (const line of results) {
+            // Only track token usage when in online mode
+            if (line.startsWith('TOKEN_USAGE:') && isOnlineMode) {
+              const tokens = parseInt(line.split(':')[1]);
+              updateTokenUsage(tokens);
+            } else {
+              lastLine = line;
+            }
+          }
+          
+          // If no content was found, use the last line
+          if (!lastLine && results.length > 0) {
+            lastLine = results[results.length - 1];
+          }
+          
           const data = JSON.parse(lastLine);
           resolve(data);
         } catch (parseError) {
@@ -326,6 +351,23 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
     const pythonPath = getPythonPath();
 
     debug('Generating filenames with config:', { files, online_mode });
+    
+    // Add check for online mode and API key availability
+    if (online_mode) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        debug('WARNING: OpenAI API key not found but online mode requested');
+        return {
+          success: false,
+          error: "OpenAI API key not found. Please add your API key or switch to offline mode.",
+          generated_names: {}
+        };
+      }
+      
+      // Only update call usage in online mode
+      updateCallUsage();
+    }
+    
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'generate',
       files: files,
@@ -345,7 +387,13 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
         if (err) {
           console.error('Python script error:', err);
           debug('Python execution failed with error:', err);
-          reject(err);
+          
+          // Provide a more helpful error message
+          if (err.message && err.message.includes('ModuleNotFoundError: No module named \'moondream\'')) {
+            reject(new Error('The Moondream module is not installed. Try using online mode or install the required dependencies.'));
+          } else {
+            reject(err);
+          }
           return;
         }
 
@@ -354,7 +402,8 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
           // Process all output lines to capture token usage
           let lastLine = '';
           for (const line of results) {
-            if (line.startsWith('TOKEN_USAGE:')) {
+            // Only track token usage when in online mode
+            if (line.startsWith('TOKEN_USAGE:') && online_mode) {
               const tokens = parseInt(line.split(':')[1]);
               updateTokenUsage(tokens);
             } else {
@@ -375,7 +424,8 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
 
       // Handle process output in real-time
       pythonProcess.on('message', (message) => {
-        if (message.startsWith('TOKEN_USAGE:')) {
+        // Only track token usage when in online mode
+        if (message.startsWith('TOKEN_USAGE:') && online_mode) {
           const tokens = parseInt(message.split(':')[1]);
           updateTokenUsage(tokens);
         }
@@ -410,6 +460,11 @@ ipcMain.handle('rename-files', async (event, filesToProcess) => {
     filesToProcess.forEach(file => {
       new_names[path.basename(file.oldPath)] = file.newName;
     });
+    
+    // Only update call usage in online mode
+    if (isOnlineMode) {
+      updateCallUsage();
+    }
 
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'rename',
@@ -434,7 +489,23 @@ ipcMain.handle('rename-files', async (event, filesToProcess) => {
         }
 
         try {
-          const lastLine = results[results.length - 1];
+          // Process results for token usage (if any) and get the last line
+          let lastLine = '';
+          for (const line of results) {
+            // Only track token usage when in online mode
+            if (line.startsWith('TOKEN_USAGE:') && isOnlineMode) {
+              const tokens = parseInt(line.split(':')[1]);
+              updateTokenUsage(tokens);
+            } else {
+              lastLine = line;
+            }
+          }
+          
+          // If no content was found in the results, use the last line
+          if (!lastLine && results.length > 0) {
+            lastLine = results[results.length - 1];
+          }
+          
           const data = JSON.parse(lastLine);
           resolve(data);
         } catch (parseError) {
