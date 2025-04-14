@@ -256,10 +256,9 @@ ipcMain.handle('chat-query', async (event, { message, currentFileStructure }) =>
       online_mode: isOnlineMode
     }));
 
-    // Only update call usage in online mode
-    if (isOnlineMode) {
-      updateCallUsage();
-    }
+    // Call usage will only be updated if we're in online mode 
+    // due to the check inside updateCallUsage
+    updateCallUsage();
 
     const options = {
       mode: 'text',
@@ -363,8 +362,11 @@ ipcMain.handle('generate-filenames', async (event, { files, online_mode }) => {
           generated_names: {}
         };
       }
-      
-      // Only update call usage in online mode
+    }
+    
+    // Call usage will only be updated if we're in online mode
+    // and the online_mode parameter is true
+    if (online_mode) {
       updateCallUsage();
     }
     
@@ -461,10 +463,9 @@ ipcMain.handle('rename-files', async (event, filesToProcess) => {
       new_names[path.basename(file.oldPath)] = file.newName;
     });
     
-    // Only update call usage in online mode
-    if (isOnlineMode) {
-      updateCallUsage();
-    }
+    // Call usage will only be updated if we're in online mode
+    // due to the check inside updateCallUsage
+    updateCallUsage();
 
     fs.writeFileSync(configPath, JSON.stringify({
       action: 'rename',
@@ -565,10 +566,13 @@ function updateTokenUsage(tokens) {
   }
 }
 
-function updateCallUsage() {
-  callUsage += 1;
-  if (mainWindow) {
-    mainWindow.webContents.send('update-call-usage', callUsage);
+function updateCallUsage(forceUpdate = false) {
+  // Only increment the call count if explicitly in online mode or forced
+  if (isOnlineMode || forceUpdate) {
+    callUsage += 1;
+    if (mainWindow) {
+      mainWindow.webContents.send('update-call-usage', callUsage);
+    }
   }
 }
 
@@ -599,7 +603,7 @@ ipcMain.handle('reset-rate-limits', async () => {
 });
 
 // Add IPC handler for updating call usage
-ipcMain.handle('update-call-usage', async () => {
-  updateCallUsage();
+ipcMain.handle('update-call-usage', async (event, forceUpdate = false) => {
+  updateCallUsage(forceUpdate);
   return true;
 });
