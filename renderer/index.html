@@ -107,13 +107,52 @@
       </div>
       
       <div class="tabs">
-        <button class="tab-btn active" data-tab="initial-organize">Initial Organize</button>
-        <button class="tab-btn" data-tab="file-rename">File Rename</button>
+        <button class="tab-btn active" data-tab="file-rename">File Rename</button>
+        <button class="tab-btn" data-tab="initial-organize">Initial Organize</button>
         <button class="tab-btn" data-tab="live-mode">Live Mode</button>
         <button class="tab-btn" data-tab="agentic-search">Agentic Search</button>
       </div>
 
-      <div class="tab-content active" id="initial-organize">
+      <div class="tab-content active" id="file-rename">
+        <h2>File Rename</h2>
+        <div class="rename-section">
+          <div class="directory-input">
+            <input 
+              type="text" 
+              id="renameDirectoryPath" 
+              placeholder="Type or browse for directory path..."
+              spellcheck="false"
+            >
+            <button id="renameBrowseBtn" class="browse-btn">Browse</button>
+          </div>
+          <div class="rename-options">
+            <div class="rename-preview">
+              <div class="rename-table">
+                <div class="table-header">
+                  <div>Original Name</div>
+                  <div>New Name</div>
+                  <div>Type</div>
+                  <div>Size</div>
+                  <div>Actions</div>
+                </div>
+                <div class="table-body" id="renamePreview">
+                  <!-- Content will be dynamically populated -->
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rename-buttons">
+            <button id="generateNamesBtn" class="primary-btn" disabled>Generate Names</button>
+            <button id="renameApplyBtn" class="primary-btn" disabled>
+              <span class="default-text">Accept Changes</span>
+              <span class="loading-text" style="display: none;">Processing...</span>
+              <span class="success-text" style="display: none;">Changes Applied!</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="initial-organize">
         <div class="input-section">
           <div class="directory-input">
             <input 
@@ -160,45 +199,6 @@
                 <button id="chatSendBtn">Send</button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="tab-content" id="file-rename">
-        <h2>File Rename</h2>
-        <div class="rename-section">
-          <div class="directory-input">
-            <input 
-              type="text" 
-              id="renameDirectoryPath" 
-              placeholder="Type or browse for directory path..."
-              spellcheck="false"
-            >
-            <button id="renameBrowseBtn" class="browse-btn">Browse</button>
-          </div>
-          <div class="rename-options">
-            <div class="rename-preview">
-              <div class="rename-table">
-                <div class="table-header">
-                  <div>Original Name</div>
-                  <div>New Name</div>
-                  <div>Type</div>
-                  <div>Size</div>
-                  <div>Actions</div>
-                </div>
-                <div class="table-body" id="renamePreview">
-                  <!-- Content will be dynamically populated -->
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="rename-buttons">
-            <button id="generateNamesBtn" class="primary-btn" disabled>Generate Names</button>
-            <button id="renameApplyBtn" class="primary-btn" disabled>
-              <span class="default-text">Accept Changes</span>
-              <span class="loading-text" style="display: none;">Processing...</span>
-              <span class="success-text" style="display: none;">Changes Applied!</span>
-            </button>
           </div>
         </div>
       </div>
