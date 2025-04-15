@@ -265,11 +265,56 @@ function runBackendExecutable(scriptName, args, callback) {
     }
     
     let lines = stdout.split(/\r?\n/).filter(line => line.trim() !== '');
-    let lastJsonLine = null;
+    let jsonContent = null;
     
-    // Process lines for special messages AND find the last potential JSON line
+    // First attempt: Find content between { and } with proper JSON structure
+    const fullOutput = stdout.trim();
+    const jsonStartIndex = fullOutput.indexOf('{');
+    const jsonEndIndex = fullOutput.lastIndexOf('}');
+    
+    if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+      const potentialJson = fullOutput.substring(jsonStartIndex, jsonEndIndex + 1);
+      try {
+        jsonContent = JSON.parse(potentialJson);
+        debug('Successfully parsed JSON from full output');
+      } catch (e) {
+        debug(`Failed to parse full JSON content: ${e.message}`);
+        jsonContent = null;
+      }
+    }
+    
+    // Second attempt: Check individual lines for JSON objects
+    if (!jsonContent) {
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('{') && trimmedLine.endsWith('}')) {
+          try {
+            jsonContent = JSON.parse(trimmedLine);
+            debug('Successfully parsed JSON from individual line');
+            break;
+          } catch (e) {
+            debug(`Failed to parse line as JSON: ${e.message}`);
+            // Continue to the next line
+          }
+        }
+      }
+    }
+    
+    // Third attempt: Look for the last line that might be JSON
+    if (!jsonContent && lines.length > 0) {
+      const lastLine = lines[lines.length - 1].trim();
+      if (lastLine.startsWith('{') && lastLine.endsWith('}')) {
+        try {
+          jsonContent = JSON.parse(lastLine);
+          debug('Successfully parsed last line as JSON');
+        } catch (e) {
+          debug(`Failed to parse last line as JSON: ${e.message}`);
+        }
+      }
+    }
+    
+    // Process special message lines for token usage, etc.
     lines.forEach(line => {
-      // Check for special prefixes first
       if (line.startsWith('TOKEN_USAGE:') && isOnlineMode) {
         const tokens = parseInt(line.split(':')[1]);
         if (!isNaN(tokens)) updateTokenUsage(tokens);
@@ -284,76 +329,12 @@ function runBackendExecutable(scriptName, args, callback) {
         const calls = parseInt(line.split(':')[1]);
         debug('Call limit reached from executable:', calls);
         mainWindow.webContents.send('call-limit-reached', calls);
-      } else if (line === 'JSONRESULT' && lines.length > lines.indexOf(line) + 1) {
-        // The next line after JSONRESULT should be the clean JSON
-        const jsonLine = lines[lines.indexOf(line) + 1];
-        if (jsonLine && jsonLine.trim().startsWith('{') && jsonLine.trim().endsWith('}')) {
-          lastJsonLine = jsonLine.trim();
-          debug('Found JSONRESULT marker with JSON on next line');
-        }
-      }
-      // Assume anything else *could* be the final JSON output
-      // Especially if it starts with { and ends with }
-      else if (line.trim().startsWith('{') && line.trim().endsWith('}')) {
-         lastJsonLine = line.trim(); // Store the latest potential JSON line
       }
     });
     
-    // Attempt to parse the LAST found JSON line
-    let parsedResult = null;
-    if (lastJsonLine) {
-        debug(`Attempting to parse last JSON line: ${lastJsonLine}`);
-        try {
-            parsedResult = JSON.parse(lastJsonLine);
-            debug('Successfully parsed last JSON line from executable');
-        } catch (e) {
-            debug(`Failed to parse last JSON line: ${e.message}`);
-            // Try looking for a complete JSON string in the entire output
-            const jsonStartIdx = stdout.indexOf('{');
-            const jsonEndIdx = stdout.lastIndexOf('}');
-            
-            if (jsonStartIdx >= 0 && jsonEndIdx > jsonStartIdx) {
-                const potentialJson = stdout.substring(jsonStartIdx, jsonEndIdx + 1);
-                try {
-                    parsedResult = JSON.parse(potentialJson);
-                    debug('Successfully parsed JSON from full output');
-                } catch (e2) {
-                    debug(`Failed to parse JSON from full output: ${e2.message}`);
-                }
-            }
-            
-            // Fallback: If parsing fails, check if the *very* last line might be JSON
-            if (!parsedResult && lines.length > 0) {
-                const veryLastLine = lines[lines.length - 1].trim();
-                if (veryLastLine.startsWith('{') && veryLastLine.endsWith('}')) {
-                    try {
-                        parsedResult = JSON.parse(veryLastLine);
-                        debug('Successfully parsed VERY last line as JSON');
-                    } catch (e2) {
-                        debug(`Failed to parse VERY last line as JSON: ${e2.message}`);
-                    }
-                }
-            }
-        }
-    } else {
-        // If no JSON-like line was found, try looking for a complete JSON string in the entire output
-        const jsonStartIdx = stdout.indexOf('{');
-        const jsonEndIdx = stdout.lastIndexOf('}');
-        
-        if (jsonStartIdx >= 0 && jsonEndIdx > jsonStartIdx) {
-            const potentialJson = stdout.substring(jsonStartIdx, jsonEndIdx + 1);
-            try {
-                parsedResult = JSON.parse(potentialJson);
-                debug('Successfully parsed JSON from full output (no JSON line found)');
-            } catch (e) {
-                debug(`Failed to parse JSON from full output (no JSON line found): ${e.message}`);
-            }
-        }
-    }
-    
     if (callback) {
       // Return the parsed JSON object if successful, otherwise the full stdout
-      callback(null, parsedResult !== null ? parsedResult : stdout);
+      callback(null, jsonContent !== null ? jsonContent : stdout);
     }
   });
 }

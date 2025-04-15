@@ -679,11 +679,7 @@ def analyze_directory(directory_path, online_mode=False):
             if "files" in result and isinstance(result["files"], list):
                 logger.info(f"Successfully generated file structure with {len(result['files'])} files")
                 print(f"\nSuccessfully generated file structure with {len(result['files'])} files")
-                # Return the JSON directly without extra text before or after it
-                # Make sure to print only the JSON on the last line
-                print("\nJSONRESULT")  # Add a marker that can be easily identified by JavaScript
-                print(json.dumps(result))
-                return json.dumps(result)
+                return json.dumps(result, indent=2)
             else:
                 logger.error("Invalid structure in LLM response - missing 'files' array")
                 print("\nError: Invalid structure in LLM response - missing 'files' array")

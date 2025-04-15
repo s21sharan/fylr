@@ -172,25 +172,27 @@ analyzeBtn.addEventListener('click', async () => {
           console.error('Error parsing JSON result:', parseError);
           showMessage('Error: Failed to parse response from server', 'error');
         }
-      } else if (typeof result === 'object') {
-        // The result is already an object (pre-parsed JSON)
-        if (result.files && Array.isArray(result.files)) {
-          buildFileTree(result);
-          resultsContainer.style.display = 'block';
-          showMessage('Analysis complete!', 'success');
-        } else {
-          console.error('Invalid result object structure:', result);
-          showMessage('Error: Invalid response format from server', 'error');
-        }
+      } 
+      // Check if it's an object with a files array
+      else if (result.files && Array.isArray(result.files)) {
+        buildFileTree(result);
+        resultsContainer.style.display = 'block';
+        showMessage('Analysis complete!', 'success');
+      } 
+      // If it's just an array, wrap it in an object
+      else if (Array.isArray(result)) {
+        buildFileTree({ files: result });
+        resultsContainer.style.display = 'block';
+        showMessage('Analysis complete!', 'success');
       } else {
-        console.error('Unexpected result type:', typeof result, result);
-        showMessage('Error: Unexpected response type from server', 'error');
+        console.error('Invalid result structure:', result);
+        showMessage('Error: Invalid response from server', 'error');
       }
     } else {
       showMessage('Error: No response from server', 'error');
     }
   } catch (error) {
-    console.error('Error calling analyze-directory:', error);
+    console.error('Error during analysis:', error);
     showMessage(`Error: ${error.message}`, 'error');
   } finally {
     analyzeBtn.disabled = false;
@@ -736,19 +738,26 @@ async function validateAndAnalyzeDirectory(path) {
     let startTime = performance.now();
     let rawData;
     
-    if (testJsonExists) {
-      // Use test.json instead of running analysis
-      debugLog('Found test.json in project root, using it instead of running full analysis');
-      rawData = await ipcRenderer.invoke('read-test-json');
-    } else {
-      // Call backend to analyze directory as normal
-      debugLog('No test.json found in project root, running full analysis');
-      rawData = await ipcRenderer.invoke('analyze-directory', path);
+    try {
+      if (testJsonExists) {
+        // Use test.json instead of running analysis
+        debugLog('Found test.json in project root, using it instead of running full analysis');
+        rawData = await ipcRenderer.invoke('read-test-json');
+      } else {
+        // Call backend to analyze directory as normal
+        debugLog('No test.json found in project root, running full analysis');
+        rawData = await ipcRenderer.invoke('analyze-directory', path);
+      }
+      
+      const endTime = performance.now();
+      debugLog(`Process completed in ${(endTime - startTime) / 1000} seconds`);
+      debugLog("Raw data received:", rawData);
+    } catch (processError) {
+      debugLog("Error invoking backend process:", processError);
+      showMessage(`Error: ${processError.message}`, 'error');
+      loader.style.display = 'none';
+      return false;
     }
-    
-    const endTime = performance.now();
-    debugLog(`Process completed in ${(endTime - startTime) / 1000} seconds`);
-    debugLog("Raw data received:", rawData);
     
     // Ensure we have a valid data structure
     if (!rawData) {
@@ -757,31 +766,67 @@ async function validateAndAnalyzeDirectory(path) {
       return false;
     }
     
+    let parsedData;
+    
     // Convert from string to object if necessary
     if (typeof rawData === 'string') {
       try {
-        rawData = JSON.parse(rawData);
-        debugLog("Parsed JSON data:", rawData);
+        // Try to parse the entire string as JSON
+        parsedData = JSON.parse(rawData);
+        debugLog("Successfully parsed full JSON data:", parsedData);
       } catch (parseError) {
-        debugLog("Failed to parse JSON:", parseError);
-        showMessage('Error: Invalid response format from server', 'error');
-        loader.style.display = 'none';
-        return false;
+        debugLog("Failed to parse full JSON string, attempting to extract JSON portion:", parseError);
+        
+        // Try to extract JSON from the string by finding content between { and }
+        const jsonStartIndex = rawData.indexOf('{');
+        const jsonEndIndex = rawData.lastIndexOf('}');
+        
+        if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+          const potentialJson = rawData.substring(jsonStartIndex, jsonEndIndex + 1);
+          try {
+            parsedData = JSON.parse(potentialJson);
+            debugLog("Successfully parsed extracted JSON portion:", parsedData);
+          } catch (extractError) {
+            debugLog("Failed to parse extracted JSON portion:", extractError);
+            showMessage('Error: Invalid response format from server', 'error');
+            loader.style.display = 'none';
+            return false;
+          }
+        } else {
+          debugLog("No valid JSON found in the response");
+          showMessage('Error: Invalid response format from server', 'error');
+          loader.style.display = 'none';
+          return false;
+        }
       }
+    } else {
+      // Already an object, use as is
+      parsedData = rawData;
     }
     
     // Ensure we have a valid files array
-    if (!rawData.files && Array.isArray(rawData)) {
-      // If rawData is an array, assume it's the files array
-      fileStructureData = { files: rawData };
-    } else if (rawData.files && Array.isArray(rawData.files)) {
-      // If rawData has a files property that's an array, use it as is
-      fileStructureData = rawData;
+    if (!parsedData.files && Array.isArray(parsedData)) {
+      // If parsedData is an array, assume it's the files array
+      fileStructureData = { files: parsedData };
+    } else if (parsedData.files && Array.isArray(parsedData.files)) {
+      // If parsedData has a files property that's an array, use it as is
+      fileStructureData = parsedData;
     } else {
-      // Default to an empty files array
-      debugLog("Invalid data structure, defaulting to empty files array");
-      fileStructureData = { files: [] };
-      showMessage('Warning: No valid files found in analysis result', 'error');
+      // Last attempt to find a files array
+      const filesKey = Object.keys(parsedData).find(key => 
+        Array.isArray(parsedData[key]) && 
+        parsedData[key].length > 0 && 
+        parsedData[key][0].src_path
+      );
+      
+      if (filesKey) {
+        fileStructureData = { files: parsedData[filesKey] };
+      } else {
+        // Default to an empty files array
+        debugLog("Invalid data structure, defaulting to empty files array");
+        fileStructureData = { files: [] };
+        showMessage('Warning: No valid files found in analysis result', 'error');
+      }
     }
     
     debugLog("Processed file structure data:", fileStructureData);

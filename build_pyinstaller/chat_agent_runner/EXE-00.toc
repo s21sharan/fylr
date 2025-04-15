@@ -228,7 +228,7 @@
  [],
  False,
  False,
- 1744753026,
+ 1744755177,
  [('runw',
    '/Users/yashas/Documents/Fylr_MVPs/FylrV1.0MVP/fylr/.venv/lib/python3.13/site-packages/PyInstaller/bootloader/Darwin-64bit/runw',
    'EXECUTABLE')],
