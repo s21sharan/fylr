@@ -244,82 +244,64 @@ function runBackendExecutable(scriptName, args, callback) {
     if (callback) {
       callback(new Error(errorMsg), null);
     }
-    return; // Exit if executable not found
+    return Promise.reject(new Error(errorMsg));
   }
 
-  execFile(exePath, args, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error executing ${exePath}:`, error);
-      console.error(`Stderr: ${stderr}`);
-      debug(`Error executing ${exePath}: ${error.message}`);
-      debug(`Stderr: ${stderr}`);
-      if (callback) {
-        callback(error, null);
-      }
-      return;
-    }
-    
-    debug(`Raw stdout from ${exePath}:\n${stdout}`);
-    if (stderr) {
-        debug(`Stderr from ${exePath}:\n${stderr}`);
-    }
-    
-    let lines = stdout.split(/\r?\n/).filter(line => line.trim() !== '');
-    let lastJsonLine = null;
-    
-    // Process lines for special messages AND find the last potential JSON line
-    lines.forEach(line => {
-      // Check for special prefixes first
-      if (line.startsWith('TOKEN_USAGE:') && isOnlineMode) {
-        const tokens = parseInt(line.split(':')[1]);
-        if (!isNaN(tokens)) updateTokenUsage(tokens);
-      } else if (line.startsWith('CALL_USAGE:') && isOnlineMode) {
-        const calls = parseInt(line.split(':')[1]);
-        if (!isNaN(calls)) updateCallUsage(true); // Force update based on backend count
-      } else if (line.startsWith('TOKEN_LIMIT_REACHED:')) {
-        const tokens = parseInt(line.split(':')[1]);
-        debug('Token limit reached from executable:', tokens);
-        mainWindow.webContents.send('token-limit-reached', tokens);
-      } else if (line.startsWith('CALL_LIMIT_REACHED:')) {
-        const calls = parseInt(line.split(':')[1]);
-        debug('Call limit reached from executable:', calls);
-        mainWindow.webContents.send('call-limit-reached', calls);
-      } 
-      // Assume anything else *could* be the final JSON output
-      // Especially if it starts with { and ends with }
-      else if (line.trim().startsWith('{') && line.trim().endsWith('}')) {
-         lastJsonLine = line.trim(); // Store the latest potential JSON line
-      }
-    });
-    
-    // Attempt to parse the LAST found JSON line
-    let parsedResult = null;
-    if (lastJsonLine) {
-        debug(`Attempting to parse last JSON line: ${lastJsonLine}`);
-        try {
-            parsedResult = JSON.parse(lastJsonLine);
-            debug('Successfully parsed last JSON line from executable');
-        } catch (e) {
-            debug(`Failed to parse last JSON line: ${e.message}`);
-            // Fallback: If parsing fails, check if the *very* last line might be JSON
-            if (lines.length > 0) {
-                const veryLastLine = lines[lines.length - 1].trim();
-                if (veryLastLine.startsWith('{') && veryLastLine.endsWith('}')) {
-                    try {
-                        parsedResult = JSON.parse(veryLastLine);
-                        debug('Successfully parsed VERY last line as JSON');
-                    } catch (e2) {
-                        debug(`Failed to parse VERY last line as JSON: ${e2.message}`);
-                    }
-                }
-            }
+  return new Promise((resolve, reject) => {
+    execFile(exePath, args, (error, stdout, stderr) => {
+      if (error) {
+        debug(`Error executing backend: ${error.message}`);
+        if (stderr) {
+          debug(`Stderr: ${stderr}`);
         }
-    }
-    
-    if (callback) {
-      // Return the parsed JSON object if successful, otherwise the full stdout
-      callback(null, parsedResult !== null ? parsedResult : stdout);
-    }
+        
+        if (callback) {
+          callback(error, null);
+        }
+        reject(error);
+        return;
+      }
+      
+      debug(`Backend execution completed with stdout length: ${stdout.length} bytes`);
+      if (stderr) {
+        debug(`Stderr: ${stderr}`);
+      }
+      
+      // Try to extract JSON result if present
+      let result = stdout;
+      try {
+        // Look for a JSON marker in the output
+        const jsonMarker = 'JSONRESULT';
+        const jsonIndex = stdout.indexOf(jsonMarker);
+        
+        if (jsonIndex !== -1) {
+          // Extract the JSON part after the marker
+          const jsonPart = stdout.substring(jsonIndex + jsonMarker.length).trim();
+          // Try to parse it as JSON
+          const parsedJson = JSON.parse(jsonPart);
+          result = parsedJson;
+          debug('Successfully extracted and parsed JSON from output');
+        } else {
+          // Try to parse the entire output as JSON
+          const parsedJson = JSON.parse(stdout);
+          result = parsedJson;
+          debug('Successfully parsed entire output as JSON');
+        }
+      } catch (parseError) {
+        // If parsing fails, return the raw output
+        debug(`Failed to parse output as JSON: ${parseError.message}`);
+        result = stdout;
+      }
+      
+      if (callback) {
+        callback(null, result);
+      }
+      resolve({
+        success: true,
+        output: result,
+        error: stderr || null
+      });
+    });
   });
 }
 
@@ -443,6 +425,26 @@ ipcMain.handle('get-online-mode', async (event) => {
   return isOnlineMode;
 });
 
+// Add handler to check for test.json
+ipcMain.handle('check-test-json', async (event) => {
+  const testJsonPath = getResourcePath('test.json');
+  debug(`Checking for test.json at: ${testJsonPath}`);
+  return fs.existsSync(testJsonPath);
+});
+
+// Add handler to read test.json
+ipcMain.handle('read-test-json', async (event) => {
+  const testJsonPath = getResourcePath('test.json');
+  debug(`Reading test.json from: ${testJsonPath}`);
+  try {
+    const data = fs.readFileSync(testJsonPath, 'utf8');
+    return data;
+  } catch (error) {
+    debug(`Error reading test.json: ${error.message}`);
+    return null;
+  }
+});
+
 // Add rate limit tracking functions
 function updateTokenUsage(tokens) {
   tokenUsage += tokens;
@@ -496,22 +498,58 @@ ipcMain.handle('update-call-usage', async (event, forceUpdate = false) => {
 // Handle file organization
 ipcMain.handle('organize-files', async (event, { directory, onlineMode }) => {
   try {
+    debug(`==================================================================`);
+    debug(`STARTING FILE ORGANIZATION WITH:`);
+    debug(`Directory: ${directory}`);
+    debug(`Online Mode: ${onlineMode} (${typeof onlineMode})`);
+    debug(`==================================================================`);
+    
     // Check if we've reached limits
     if (onlineMode && (tokenUsage >= TOKEN_LIMIT || callUsage >= CALL_LIMIT)) {
       debug('Limits reached, forcing offline mode');
       onlineMode = false;
     }
 
+    // Convert onlineMode to a definite boolean in case it's passed as a string
+    if (typeof onlineMode === 'string') {
+      const originalValue = onlineMode;
+      onlineMode = (onlineMode.toLowerCase() === 'true');
+      debug(`Converted string online mode "${originalValue}" to boolean: ${onlineMode}`);
+    } else {
+      onlineMode = Boolean(onlineMode);
+    }
+    
     const config = {
       directory: directory,
       online_mode: onlineMode
     };
 
-    const configPath = path.join(app.getPath('temp'), 'config.json');
-    fs.writeFileSync(configPath, JSON.stringify(config));
+    debug(`SAVING CONFIG WITH EXPLICIT VALUES:`);
+    debug(`- directory: ${config.directory}`);
+    debug(`- online_mode: ${config.online_mode} (${typeof config.online_mode})`);
 
-    const scriptPath = getResourcePath('backend', 'initial_organize_electron.py');
+    // Use a more specific config file name for clarity
+    const configPath = path.join(app.getPath('temp'), 'organize_files_config.json');
+    
+    // Write the config file with indentation for readability in case we need to inspect it
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    
+    // Verify the written file contents
+    try {
+      const writtenContent = fs.readFileSync(configPath, 'utf8');
+      debug(`Verified config file contents:`);
+      debug(writtenContent);
+    } catch (err) {
+      debug(`Error reading back config file: ${err.message}`);
+    }
+
+    debug(`Executing initial_organize_electron.py with config at: ${configPath}`);
     const result = await runBackendExecutable('initial_organize_electron.py', [configPath]);
+    
+    debug(`Organization completed with result type: ${typeof result.output}`);
+    if (typeof result.output === 'object') {
+      debug(`Output is an object with keys: ${Object.keys(result.output).join(', ')}`);
+    }
 
     return {
       success: true,
@@ -519,16 +557,19 @@ ipcMain.handle('organize-files', async (event, { directory, onlineMode }) => {
       error: result.error,
       tokenUsage,
       callUsage,
-      isOnlineMode
+      isOnlineMode: onlineMode,
+      configUsed: config // Return the actual config used for debugging
     };
   } catch (error) {
-    debug('Error organizing files:', error);
+    debug(`ERROR ORGANIZING FILES: ${error.message}`);
+    debug(error.stack);
+    
     return {
       success: false,
       error: error.message,
       tokenUsage,
       callUsage,
-      isOnlineMode
+      isOnlineMode: onlineMode
     };
   }
 });

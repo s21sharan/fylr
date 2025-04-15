@@ -31,9 +31,6 @@ def get_log_path(log_filename):
     
     return os.path.join(log_dir, log_filename)
 
-# Call the dotenv helper
-find_dotenv()
-
 # Configure logging
 log_file_path = get_log_path("initial_organize.log")
 print(f"[Logging setup] Log file path: {log_file_path}")
@@ -180,11 +177,40 @@ def is_image_file(file_path):
     return mime_type and mime_type.startswith('image/')
 
 def log_mode_usage(function_name, online_mode):
-    """Log the mode being used in a function"""
+    """Log the mode being used in a function and ensure it's a boolean"""
+    # Convert to explicit boolean if not already a boolean
+    if not isinstance(online_mode, bool):
+        original_value = online_mode
+        original_type = type(original_value).__name__
+        
+        # String conversion handling
+        if isinstance(original_value, str):
+            online_mode = original_value.lower() == 'true'
+            logger.warning(f"⚠️ {function_name}: String value '{original_value}' converted to boolean {online_mode}")
+        else:
+            online_mode = bool(original_value)
+            logger.warning(f"⚠️ {function_name}: Non-boolean '{original_value}' ({original_type}) converted to {online_mode}")
+        
+        logger.info(f"⚠️ {function_name}: Converted non-boolean online_mode '{original_value}' ({type(original_value)}) to {online_mode}")
+    
     mode_str = 'ONLINE (OpenAI)' if online_mode else 'OFFLINE (Local)'
-    logger.info(f"✅ Function {function_name} using {mode_str} mode, value={online_mode}, type={type(online_mode)}")
-    print(f"✅ Function {function_name} using {mode_str} mode, value={online_mode}, type={type(online_mode)}")
-    return online_mode
+    
+    # Make this SUPER visible in logs
+    log_divider = "=" * 50
+    logger.info(log_divider)
+    logger.info(f"🔍 EXPLICIT MODE CHECK IN {function_name}")
+    logger.info(f"✅ Function {function_name} using {mode_str} mode")
+    logger.info(f"   Value: {online_mode}, Type: {type(online_mode).__name__}")
+    logger.info(log_divider)
+    
+    # Also print to stdout for direct visibility
+    print(f"\n{log_divider}")
+    print(f"🔍 EXPLICIT MODE CHECK IN {function_name}")
+    print(f"✅ Function {function_name} using {mode_str} mode")
+    print(f"   Value: {online_mode}, Type: {type(online_mode).__name__}")
+    print(f"{log_divider}\n")
+    
+    return online_mode  # Return the properly converted boolean value
 
 def classify_image(file_path, online_mode=False):
     """Classify the contents of an image file using Moondream model or OpenAI Vision"""
@@ -421,25 +447,7 @@ Write your response a JSON object with the following schema:
                     if online_mode:
                         logger.info(f"Using OpenAI for file summary: {file_path}")
                         try:
-                            response = openai_client.responses.create(
-                                model="gpt-4-turbo-preview",
-                                input=[
-                                    {"role": "system", "content": prompt},
-                                    {"role": "user", "content": json.dumps(file_content)}
-                                ],
-                                temperature=0,
-                                max_tokens=256
-                            )
-                            response_content = response.output_text
-                            
-                            # Update token usage
-                            if hasattr(response, 'usage'):
-                                if not update_token_usage(response.usage.total_tokens, "get_file_summary"):
-                                    logger.warning("Token limit reached during file summary")
-                                    return None
-                        except Exception as e:
-                            logger.error(f"Error using OpenAI responses API: {str(e)}")
-                            # Fallback to chat completions if responses API fails
+                            # Use chat.completions instead of responses API
                             response = openai_client.chat.completions.create(
                                 model="gpt-4-turbo-preview",
                                 messages=[
@@ -453,9 +461,12 @@ Write your response a JSON object with the following schema:
                             
                             # Update token usage
                             if hasattr(response, 'usage'):
-                                if not update_token_usage(response.usage.total_tokens, "get_file_summary_fallback"):
-                                    logger.warning("Token limit reached during file summary fallback")
+                                if not update_token_usage(response.usage.total_tokens, "get_file_summary"):
+                                    logger.warning("Token limit reached during file summary")
                                     return None
+                        except Exception as e:
+                            logger.error(f"Error using OpenAI chat completions API: {str(e)}")
+                            return None
                 else:
                     logger.info(f"Using Ollama for file summary: {file_path}")
                     summary_response = ollama_client.chat(
@@ -502,17 +513,30 @@ def print_separator():
 
 def analyze_directory(directory_path, online_mode=False):
     """Analyze the directory and return the file structure data"""
-    online_mode = log_mode_usage("analyze_directory", online_mode)
-    logger.info(f"Starting directory analysis in {'ONLINE' if online_mode else 'OFFLINE'} mode")
+    # Enhanced debug for initial value
+    logger.info("🚀 Starting analyze_directory with online_mode input:")
+    logger.info(f"   Value before conversion: {online_mode}")
+    logger.info(f"   Type before conversion: {type(online_mode).__name__}")
     
-    # Add more explicit logging for debugging
+    # Use the log_mode_usage helper to ensure online_mode is a boolean
+    online_mode = log_mode_usage("analyze_directory", online_mode)
+    
+    # More detailed logging about what SHOULD happen
     if online_mode:
-        logger.info("🌐 ONLINE MODE: Using OpenAI API for file analysis and organization")
-        print("🌐 ONLINE MODE: Using OpenAI API for file analysis and organization")
+        logger.info("🌐 ONLINE MODE ACTIVE: Will attempt to use OpenAI API for analysis")
+        print("🌐 ONLINE MODE ACTIVE: Will attempt to use OpenAI API for analysis")
+        
+        # Check if OpenAI client is available
+        if not openai_client:
+            logger.error("❌ OpenAI client is not initialized but online_mode is True!")
+            logger.error("❌ Falling back to offline mode due to missing OpenAI client")
+            print("❌ OpenAI client is not initialized but online_mode is True!")
+            print("❌ Falling back to offline mode due to missing OpenAI client")
+            online_mode = False
         
         # Check limits before making API call
         if not update_token_usage(0, "analyze_directory_precheck"):
-            logger.warning("Token or call limit reached, switching to offline mode")
+            logger.warning("❌ Token or call limit reached, switching to offline mode")
             online_mode = False
             print("MODE_SWITCH:offline")
         
@@ -520,29 +544,39 @@ def analyze_directory(directory_path, online_mode=False):
             # Test OpenAI connectivity
             try:
                 print("🧪 Testing OpenAI API connectivity...")
-                test_response = openai_client.responses.create(
+                logger.info("🧪 Testing OpenAI API connectivity...")
+                
+                test_response = openai_client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    input=[{"role": "user", "content": "Respond with OK if you receive this message."}],
+                    messages=[{"role": "user", "content": "Respond with OK if you receive this message."}],
                     max_tokens=10
                 )
-                test_result = test_response.output_text.strip()
+                test_result = test_response.choices[0].message.content.strip()
                 print(f"🧪 OpenAI API test result: {test_result}")
-                logger.info(f"OpenAI API test successful: {test_result}")
+                logger.info(f"🧪 OpenAI API test successful: {test_result}")
                 
                 # Update token usage
                 if hasattr(test_response, 'usage'):
-                    if not update_token_usage(test_response.usage.total_tokens, "analyze_directory_test"):
-                        logger.warning("Token limit reached during directory analysis test")
+                    tokens_used = test_response.usage.total_tokens
+                    logger.info(f"🔢 Test used {tokens_used} tokens")
+                    
+                    if not update_token_usage(tokens_used, "analyze_directory_test"):
+                        logger.warning("❌ Token limit reached during test, switching to offline mode")
                         online_mode = False
                         print("MODE_SWITCH:offline")
             except Exception as e:
                 print(f"❌ OpenAI API test failed: {str(e)}")
-                logger.error(f"OpenAI API test failed: {str(e)}")
+                logger.error(f"❌ OpenAI API test failed: {str(e)}")
                 online_mode = False
                 print("MODE_SWITCH:offline")
     else:
-        logger.info("🖥️ OFFLINE MODE: Using Local LLM (Ollama) for file analysis and organization")
-        print("🖥️ OFFLINE MODE: Using Local LLM (Ollama) for file analysis and organization")
+        logger.info("🖥️ OFFLINE MODE ACTIVE: Will use Local LLM (Ollama) for analysis")
+        print("🖥️ OFFLINE MODE ACTIVE: Will use Local LLM (Ollama) for analysis")
+    
+    # Final mode check after all validations
+    mode_str = 'ONLINE (OpenAI)' if online_mode else 'OFFLINE (Local)'
+    logger.info(f"🔒 FINAL ANALYSIS MODE: {mode_str}")
+    print(f"🔒 FINAL ANALYSIS MODE: {mode_str}")
     
     files_to_process = []
     
@@ -593,17 +627,34 @@ def analyze_directory(directory_path, online_mode=False):
             {"role": "user", "content": json.dumps(formatted_input)}
         ]
         
-        if online_mode:
-            logger.info("Using OpenAI for file structure generation")
+        # Make sure online_mode is explicitly converted to boolean if it's not already
+        if not isinstance(online_mode, bool):
+            original_value = online_mode
+            original_type = type(original_value).__name__
+            online_mode = bool(online_mode)
+            logger.info(f"🔄 Converted online_mode from {original_type} to explicit bool: {online_mode}")
+            print(f"🔄 Converted online_mode from {original_type} to explicit bool: {online_mode}")
+        
+        # Log the final decision point with very clear markers
+        log_divider = "=" * 80
+        if online_mode and openai_client:
+            logger.info(log_divider)
+            logger.info("🚀 DECISION POINT: Using OpenAI for file structure generation")
             logger.info("📤 SENDING REQUEST TO OPENAI API FOR FILE STRUCTURE GENERATION")
-            print("\n" + "*" * 80)
+            logger.info(log_divider)
+            print(f"\n{log_divider}")
+            print("🚀 DECISION POINT: Using OpenAI for file structure generation")
             print("📤 SENDING REQUEST TO OPENAI API FOR FILE STRUCTURE GENERATION")
-            print("*" * 80)
+            print(log_divider)
             
             try:
-                structure_response = openai_client.responses.create(
+                # Use chat.completions API instead of responses
+                logger.info("📡 Making API call to OpenAI chat.completions endpoint")
+                print("📡 Making API call to OpenAI chat.completions endpoint")
+                
+                structure_response = openai_client.chat.completions.create(
                     model="gpt-4-turbo-preview",
-                    input=messages,
+                    messages=messages,
                     temperature=0,
                     max_tokens=2048
                 )
@@ -611,35 +662,54 @@ def analyze_directory(directory_path, online_mode=False):
                 print("\n" + "*" * 80)
                 print("📥 RECEIVED RESPONSE FROM OPENAI API FOR FILE STRUCTURE")
                 print("*" * 80)
-                response_content = structure_response.output_text.strip()
+                response_content = structure_response.choices[0].message.content.strip()
+                
+                # Update token usage
+                if hasattr(structure_response, 'usage'):
+                    tokens_used = structure_response.usage.total_tokens
+                    logger.info(f"🔢 API call used {tokens_used} tokens")
+                    
+                    if not update_token_usage(tokens_used, "analyze_directory"):
+                        logger.warning("❌ Token limit reached during file structure generation")
+                        print("TOKEN_LIMIT_REACHED:" + str(total_tokens_used))
             except Exception as e:
                 logger.error(f"❌ ERROR USING OPENAI API FOR FILE STRUCTURE: {str(e)}")
                 print(f"❌ ERROR USING OPENAI API FOR FILE STRUCTURE: {str(e)}")
-                # Fallback to chat completions if responses API fails
-                try:
-                    structure_response = openai_client.chat.completions.create(
-                        model="gpt-4-turbo-preview",
-                        messages=messages,
-                        temperature=0,
-                        max_tokens=2048
-                    )
-                    response_content = structure_response.choices[0].message.content.strip()
-                except Exception as e2:
-                    logger.error(f"❌ ERROR USING OPENAI CHAT COMPLETIONS: {str(e2)}")
-                    print(f"❌ ERROR USING OPENAI CHAT COMPLETIONS: {str(e2)}")
-                    # Fallback to local LLM if both OpenAI methods fail
-                    logger.warning("Falling back to local LLM for file structure generation")
-                    print("Falling back to local LLM for file structure generation")
-                    structure_response = ollama_client.chat(
-                        model='mistral',
-                        messages=messages,
-                        options={"temperature": 0, "num_predict": 2048}
-                    )
-                    response_content = structure_response['message']['content'].strip()
+                # Fallback to local LLM if OpenAI method fails
+                logger.warning("⚠️ Falling back to local LLM for file structure generation due to API error")
+                print("⚠️ Falling back to local LLM for file structure generation due to API error")
+                
+                logger.info(log_divider)
+                logger.info("🔄 FALLBACK: Using Ollama for file structure generation after OpenAI failure")
+                logger.info("📤 SENDING REQUEST TO LOCAL LLM (OLLAMA)")
+                logger.info(log_divider)
+                print(f"\n{log_divider}")
+                print("🔄 FALLBACK: Using Ollama for file structure generation after OpenAI failure")
+                print("📤 SENDING REQUEST TO LOCAL LLM (OLLAMA)")
+                print(log_divider)
+                
+                structure_response = ollama_client.chat(
+                    model='mistral',
+                    messages=messages,
+                    options={"temperature": 0, "num_predict": 2048}
+                )
+                response_content = structure_response['message']['content'].strip()
         else:
-            logger.info("Using Ollama for file structure generation")
+            # Log why we're using offline mode with clearly visible markers
+            logger.info(log_divider)
+            if not online_mode:
+                logger.info("🚀 DECISION POINT: Using Ollama because online_mode is False")
+                print("🚀 DECISION POINT: Using Ollama because online_mode is False")
+            elif not openai_client:
+                logger.info("🚀 DECISION POINT: Using Ollama because OpenAI client is not initialized")
+                print("🚀 DECISION POINT: Using Ollama because OpenAI client is not initialized")
+            
             logger.info("📤 SENDING REQUEST TO LOCAL LLM (OLLAMA)")
+            logger.info(log_divider)
+            print(f"\n{log_divider}")
             print("📤 SENDING REQUEST TO LOCAL LLM (OLLAMA)")
+            print(log_divider)
+            
             structure_response = ollama_client.chat(
                 model='mistral',
                 messages=messages,
@@ -682,7 +752,11 @@ def analyze_directory(directory_path, online_mode=False):
             if "files" in result and isinstance(result["files"], list):
                 logger.info(f"Successfully generated file structure with {len(result['files'])} files")
                 print(f"\nSuccessfully generated file structure with {len(result['files'])} files")
-                return json.dumps(result, indent=2)
+                # Return the JSON directly without extra text before or after it
+                # Make sure to print only the JSON on the last line
+                print("\nJSONRESULT")  # Add a marker that can be easily identified by JavaScript
+                print(json.dumps(result))
+                return json.dumps(result)
             else:
                 logger.error("Invalid structure in LLM response - missing 'files' array")
                 print("\nError: Invalid structure in LLM response - missing 'files' array")
@@ -755,19 +829,26 @@ if __name__ == "__main__":
             if isinstance(online_mode, str):
                 online_mode = online_mode.lower() == 'true'
             
+            # Force explicit bool conversion for safety
+            online_mode = bool(online_mode)
+            
             # Add more explicit logging for debugging
             logger.info("-" * 50)
             logger.info("STARTING FILE ORGANIZATION")
             logger.info(f"MODE: {'ONLINE (Using OpenAI API)' if online_mode else 'OFFLINE (Using Local Models)'}")
             logger.info(f"DIRECTORY: {directory}")
+            logger.info(f"ONLINE_MODE (final): {online_mode}, TYPE: {type(online_mode)}")
             logger.info("-" * 50)
+            
+            # Print for debugging
+            print(f"📌 FINAL ONLINE_MODE: {online_mode}, TYPE: {type(online_mode)}")
             
             if not directory or not os.path.isdir(directory):
                 logger.error(f"Invalid directory path: {directory}")
                 print("Error: Invalid directory path")
                 sys.exit(1)
                 
-            # Make sure we pass online_mode explicitly
+            # Make sure we pass online_mode explicitly as boolean
             logger.info(f"📣 Explicitly passing online_mode={online_mode} to analyze_directory")
             result = analyze_directory(directory, online_mode=online_mode)
             print(result)

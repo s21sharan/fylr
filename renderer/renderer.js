@@ -172,27 +172,25 @@ analyzeBtn.addEventListener('click', async () => {
           console.error('Error parsing JSON result:', parseError);
           showMessage('Error: Failed to parse response from server', 'error');
         }
-      } 
-      // Check if it's an object with a files array
-      else if (result.files && Array.isArray(result.files)) {
-        buildFileTree(result);
-        resultsContainer.style.display = 'block';
-        showMessage('Analysis complete!', 'success');
-      } 
-      // If it's just an array, wrap it in an object
-      else if (Array.isArray(result)) {
-        buildFileTree({ files: result });
-        resultsContainer.style.display = 'block';
-        showMessage('Analysis complete!', 'success');
+      } else if (typeof result === 'object') {
+        // The result is already an object (pre-parsed JSON)
+        if (result.files && Array.isArray(result.files)) {
+          buildFileTree(result);
+          resultsContainer.style.display = 'block';
+          showMessage('Analysis complete!', 'success');
+        } else {
+          console.error('Invalid result object structure:', result);
+          showMessage('Error: Invalid response format from server', 'error');
+        }
       } else {
-        console.error('Invalid result structure:', result);
-        showMessage('Error: Invalid response from server', 'error');
+        console.error('Unexpected result type:', typeof result, result);
+        showMessage('Error: Unexpected response type from server', 'error');
       }
     } else {
       showMessage('Error: No response from server', 'error');
     }
   } catch (error) {
-    console.error('Error during analysis:', error);
+    console.error('Error calling analyze-directory:', error);
     showMessage(`Error: ${error.message}`, 'error');
   } finally {
     analyzeBtn.disabled = false;
@@ -707,8 +705,12 @@ async function validateAndAnalyzeDirectory(path) {
   if (!path) return;
   
   try {
+    // Get current mode
+    const currentMode = await getCurrentMode();
+    console.log(`Starting analysis with mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
+    
     // Check rate limits if in online mode
-    if (modeToggle.checked) {
+    if (currentMode) {
       const canProceed = await checkRateLimits();
       if (!canProceed) return;
     }
@@ -721,9 +723,6 @@ async function validateAndAnalyzeDirectory(path) {
       return;
     }
     
-    const currentMode = await getCurrentMode();
-    console.log(`Starting analysis with mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
-    
     // Show loader
     loader.style.display = 'flex';
     resultsContainer.style.display = 'none';
@@ -732,25 +731,26 @@ async function validateAndAnalyzeDirectory(path) {
     debugLog(`Starting analysis for directory: ${path}`);
     debugLog(`Current mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
     
-    // Check if test.json exists in the project root directory
-    const testJsonExists = await ipcRenderer.invoke('check-test-json');
-    
     let startTime = performance.now();
-    let rawData;
     
-    if (testJsonExists) {
-      // Use test.json instead of running analysis
-      debugLog('Found test.json in project root, using it instead of running full analysis');
-      rawData = await ipcRenderer.invoke('read-test-json');
-    } else {
-      // Call backend to analyze directory as normal
-      debugLog('No test.json found in project root, running full analysis');
-      rawData = await ipcRenderer.invoke('analyze-directory', path);
-    }
+    // Use organize-files IPC method which explicitly passes online mode
+    const result = await ipcRenderer.invoke('organize-files', {
+      directory: path, 
+      onlineMode: currentMode
+    });
     
     const endTime = performance.now();
     debugLog(`Process completed in ${(endTime - startTime) / 1000} seconds`);
-    debugLog("Raw data received:", rawData);
+    debugLog("Result received:", result);
+    
+    if (!result || !result.success) {
+      const errorMsg = result && result.error ? result.error : 'Unknown error';
+      showMessage(`Error: ${errorMsg}`, 'error');
+      loader.style.display = 'none';
+      return false;
+    }
+    
+    let rawData = result.output;
     
     // Ensure we have a valid data structure
     if (!rawData) {
