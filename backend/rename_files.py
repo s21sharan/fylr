@@ -13,22 +13,70 @@ from PIL import Image
 # Import the analyze_image_with_openai function
 from test_openai_vision import analyze_image_with_openai
 
-# Load environment variables
-load_dotenv()
+def find_dotenv():
+    """Find the .env file in development or packaged app."""
+    if getattr(sys, 'frozen', False):
+        # The application is frozen (packaged with PyInstaller)
+        application_path = os.path.dirname(sys.executable)
+        # Go up one level from backend_bin to resources
+        resource_path = os.path.abspath(os.path.join(application_path, os.pardir))
+        dotenv_path = os.path.join(resource_path, '.env')
+    else:
+        # The application is not frozen (running from source)
+        # Assume .env is in the project root relative to this script
+        script_dir = os.path.dirname(os.path.dirname(__file__)) # Go up from backend dir
+        dotenv_path = os.path.join(script_dir, '.env')
+        
+    print(f"[dotenv helper] Trying to load .env from: {dotenv_path}")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
+        print(f"[dotenv helper] Loaded .env from: {dotenv_path}")
+    else:
+        print(f"[dotenv helper] .env file not found at: {dotenv_path}")
+        # Attempt default load_dotenv() as fallback (might find it elsewhere)
+        load_dotenv()
 
-# Configure logging to output to both file and console
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(sys.stdout),  # Output to console
-        logging.FileHandler('rename_files.log')  # Output to file
-    ]
-)
-logger = logging.getLogger('file_renamer')
+def get_log_path(log_filename):
+    """Get a writable log path for packaged or development mode."""
+    if getattr(sys, 'frozen', False):
+        # Packaged app
+        log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "Fylr")
+    else:
+        # Development mode - use backend directory
+        log_dir = os.path.dirname(__file__)
+        
+    # Ensure the log directory exists
+    os.makedirs(log_dir, exist_ok=True)
+    
+    return os.path.join(log_dir, log_filename)
 
-# Initialize OpenAI client (will be used only in online mode)
+# Call the dotenv helper
+find_dotenv()
+
+# Configure logging
+log_file_path = get_log_path("rename_files.log")
+print(f"[Logging setup] Log file path: {log_file_path}")
+
+log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('rename_files')
+logger.setLevel(logging.DEBUG) 
+
+# File Handler
+try:
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    print(f"[Logging setup] Error setting up file handler: {e}")
+
+# Console Handler (optional, good for dev)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+logger.addHandler(console_handler)
+
+logger.info("Logging configured for rename_files")
+
+# Initialize OpenAI client (after logging is set up)
 openai_client = None
 try:
     openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -36,7 +84,8 @@ try:
         openai_client = OpenAI(api_key=openai_api_key)
         logger.info("OpenAI client initialized successfully")
     else:
-        logger.warning("OPENAI_API_KEY not found in environment variables. Online mode will not be available.")
+        logger.error("OPENAI_API_KEY not found in environment variables")
+        # Don't raise here, let functions needing it handle the error
 except Exception as e:
     logger.error(f"Failed to initialize OpenAI client: {str(e)}")
 

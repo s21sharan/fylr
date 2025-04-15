@@ -2,14 +2,44 @@ import os
 import sys
 import json
 import logging
+from pathlib import Path
+
+def get_log_path(log_filename):
+    """Get a writable log path for packaged or development mode."""
+    if getattr(sys, 'frozen', False):
+        # Packaged app
+        log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "Fylr")
+    else:
+        # Development mode - use backend directory
+        log_dir = os.path.dirname(__file__)
+        
+    # Ensure the log directory exists
+    os.makedirs(log_dir, exist_ok=True)
+    
+    return os.path.join(log_dir, log_filename)
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger('file_organizer')
+log_file_path = get_log_path("apply_changes.log")
+print(f"[Logging setup] Log file path: {log_file_path}")
+
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('apply_changes')
+logger.setLevel(logging.INFO) # Use INFO level for apply changes
+
+# File Handler
+try:
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    print(f"[Logging setup] Error setting up file handler: {e}")
+
+# Console Handler (optional, good for dev)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+logger.addHandler(console_handler)
+
+logger.info("Logging configured for apply_changes")
 
 def apply_changes(structure_path):
     """Apply the file structure changes"""

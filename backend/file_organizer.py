@@ -13,30 +13,95 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from ollama import Client
 
-# Load environment variables
-load_dotenv()
+def find_dotenv():
+    """Find the .env file in development or packaged app."""
+    if getattr(sys, 'frozen', False):
+        # The application is frozen (packaged with PyInstaller)
+        application_path = os.path.dirname(sys.executable)
+        # Go up one level from the executable location (e.g., backend_bin) to resources
+        resource_path = os.path.abspath(os.path.join(application_path, os.pardir))
+        dotenv_path = os.path.join(resource_path, '.env')
+        print(f"[dotenv helper - frozen] Looking for .env in: {resource_path}")
+    else:
+        # The application is not frozen (running from source)
+        # Assume .env is in the project root, two levels up from backend/file_organizer.py
+        script_dir = os.path.dirname(os.path.dirname(__file__))
+        dotenv_path = os.path.join(script_dir, '.env')
+        print(f"[dotenv helper - source] Looking for .env in: {script_dir}")
+        
+    print(f"[dotenv helper] Trying to load .env from: {dotenv_path}")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
+        print(f"[dotenv helper] Loaded .env from: {dotenv_path}")
+        # Verify loading
+        # loaded_key = os.getenv('OPENAI_API_KEY')
+        # print(f"[dotenv helper] OPENAI_API_KEY loaded: {'Yes' if loaded_key else 'No'}")
+    else:
+        print(f"[dotenv helper] .env file not found at: {dotenv_path}")
+        # Attempt default load_dotenv() as fallback (might find it elsewhere)
+        load_dotenv()
+
+def get_log_path(log_filename):
+    """Get a writable log path for packaged or development mode."""
+    if getattr(sys, 'frozen', False):
+        # Packaged app
+        log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "Fylr")
+    else:
+        # Development mode - use backend directory
+        log_dir = os.path.dirname(__file__)
+        
+    # Ensure the log directory exists
+    os.makedirs(log_dir, exist_ok=True)
+    
+    return os.path.join(log_dir, log_filename)
+
+# Call the dotenv helper
+find_dotenv()
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+log_file_path = get_log_path("file_organizer.log")
+print(f"[Logging setup] Log file path: {log_file_path}")
+
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('file_organizer')
+logger.setLevel(logging.DEBUG)
+
+# File Handler
+try:
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    print(f"[Logging setup] Error setting up file handler: {e}")
+
+# Console Handler (optional, good for dev)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+logger.addHandler(console_handler)
+
+logger.info("Logging configured for file_organizer")
 
 # Initialize OpenAI client (will be used only in online mode)
+openai_client = None
 try:
     openai_api_key = os.getenv('OPENAI_API_KEY')
-    if not openai_api_key:
-        logger.error("OPENAI_API_KEY not found in environment variables")
+    if openai_api_key:
+        openai_client = OpenAI(api_key=openai_api_key)
+        logger.info("OpenAI client initialized successfully in file_organizer")
+    else:
+        # Raise error if key is missing and online mode might be needed later
+        logger.error("OPENAI_API_KEY not found in environment variables (file_organizer)")
         raise ValueError("OPENAI_API_KEY environment variable is required for online mode")
-    openai_client = OpenAI(api_key=openai_api_key)
-    logger.info("OpenAI client initialized successfully")
+except ValueError as ve:
+    # Re-raise the specific error we care about
+    raise ve
 except Exception as e:
-    logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-    raise
+    logger.error(f"Failed to initialize OpenAI client in file_organizer: {str(e)}")
+    # Optionally raise a generic error or allow offline-only operation
+    # raise e
 
 # Initialize Ollama client (will be used only in offline mode)
+ollama_client = None
 try:
     ollama_client = Client(host="http://localhost:11434")
     logger.info("Ollama client initialized successfully")

@@ -17,27 +17,45 @@ import logging
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(sys.stdout),  # Output to console
-        logging.FileHandler('initial_organize.log', mode='w')  # Output to file, overwrite each run
-    ]
-)
-logger = logging.getLogger('initial_organizer')
+def get_log_path(log_filename):
+    """Get a writable log path for packaged or development mode."""
+    if getattr(sys, 'frozen', False):
+        # Packaged app
+        log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "Fylr")
+    else:
+        # Development mode - use backend directory
+        log_dir = os.path.dirname(__file__)
+        
+    # Ensure the log directory exists
+    os.makedirs(log_dir, exist_ok=True)
+    
+    return os.path.join(log_dir, log_filename)
 
-# Add a handler to ensure we see all logs
+# Call the dotenv helper
+find_dotenv()
+
+# Configure logging
+log_file_path = get_log_path("initial_organize.log")
+print(f"[Logging setup] Log file path: {log_file_path}")
+
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('initial_organize')
+logger.setLevel(logging.DEBUG)
+
+# File Handler
+try:
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    print(f"[Logging setup] Error setting up file handler: {e}")
+
+# Console Handler (optional, good for dev)
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
+console_handler.setFormatter(log_formatter)
 logger.addHandler(console_handler)
 
-# Set the root logger level to DEBUG
-logging.getLogger().setLevel(logging.DEBUG)
+logger.info("Logging configured for initial_organize_electron")
 
 # Token and call limits
 TOKEN_LIMIT = 30000
@@ -679,6 +697,31 @@ def analyze_directory(directory_path, online_mode=False):
     logger.warning("No valid file summaries found")
     print("\nNo valid file summaries found")
     return json.dumps({"files": []})
+
+def find_dotenv():
+    """Find the .env file in development or packaged app."""
+    if getattr(sys, 'frozen', False):
+        # The application is frozen (packaged with PyInstaller)
+        application_path = os.path.dirname(sys.executable)
+        # Go up one level from backend_bin to resources
+        resource_path = os.path.abspath(os.path.join(application_path, os.pardir))
+        dotenv_path = os.path.join(resource_path, '.env')
+    else:
+        # The application is not frozen (running from source)
+        # Assume .env is in the project root relative to this script
+        script_dir = os.path.dirname(os.path.dirname(__file__)) # Go up from backend dir
+        dotenv_path = os.path.join(script_dir, '.env')
+        
+    print(f"[dotenv helper] Trying to load .env from: {dotenv_path}")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path=dotenv_path)
+        print(f"[dotenv helper] Loaded .env from: {dotenv_path}")
+    else:
+        print(f"[dotenv helper] .env file not found at: {dotenv_path}")
+        # Attempt default load_dotenv() as fallback (might find it elsewhere)
+        load_dotenv()
+
+find_dotenv()
 
 if __name__ == "__main__":
     # Test logging

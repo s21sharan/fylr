@@ -5,14 +5,18 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "pack": "electron-builder --dir",
+    "dist": "npm run build:backend && electron-builder",
+    "build": "npm run build:backend && electron-builder",
+    "build:mac": "npm run build:backend && electron-builder --mac",
+    "build:dmg": "npm run build:backend && electron-builder --mac dmg",
+    "build:backend": "bash build_backend.sh"
   },
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "electron-serve": "^1.3.0",
-    "node-fetch": "^3.3.2",
-    "python-shell": "^3.0.1"
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "electron": "^22.3.27",
@@ -21,11 +25,71 @@
   "build": {
     "appId": "com.yourname.fylr",
     "productName": "Fylr",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "darkModeSupport": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "hardenedRuntime": true
+    },
+    "dmg": {
+      "icon": "assets/icon.icns",
+      "title": "Install Fylr",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
     "extraFiles": [
       {
-        "from": "backend",
-        "to": "resources/backend"
+        "from": "dist_pyinstaller",
+        "to": "resources/backend_bin"
+      },
+      {
+        "from": ".env",
+        "to": "resources/.env"
       }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "find_python.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "!backend/**/*",
+      "!requirements.txt",
+      "!postinstall.js",
+      "!build_backend.sh",
+      "!build_pyinstaller/**/*",
+      "!dist_pyinstaller/**/*",
+      "!*.pyc",
+      "!**/__pycache__",
+      "!**/*.spec",
+      "!**/*.psd",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
     ]
   }
 }

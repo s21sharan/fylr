@@ -1,0 +1,3 @@
+([('rename_files',
+   '/Users/yashas/Documents/Fylr_MVPs/FylrV1.0MVP/fylr/dist_pyinstaller/rename_files',
+   'EXECUTABLE')],)
