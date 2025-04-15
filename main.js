@@ -8,7 +8,7 @@ let mainWindow;
 let isOnlineMode = true; // Add default online mode state
 let tokenUsage = 0;
 let callUsage = 0;
-const TOKEN_LIMIT = 15000;
+const TOKEN_LIMIT = 30000;
 const CALL_LIMIT = 10;
 
 const DEBUG = true;
@@ -46,6 +46,35 @@ function createWindow() {
   if (process.platform === 'darwin') {
     app.dock.setIcon(iconPath);
   }
+
+  // Handle token usage updates from Python process
+  mainWindow.webContents.on('console-message', (event, level, message) => {
+    if (message.startsWith('TOKEN_USAGE:')) {
+      const tokens = parseInt(message.split(':')[1]);
+      tokenUsage = tokens;
+      debug('Token usage updated:', tokens);
+      mainWindow.webContents.send('token-usage-update', tokens);
+    } else if (message.startsWith('CALL_USAGE:')) {
+      const calls = parseInt(message.split(':')[1]);
+      callUsage = calls;
+      debug('Call usage updated:', calls);
+      mainWindow.webContents.send('call-usage-update', calls);
+    } else if (message.startsWith('TOKEN_LIMIT_REACHED:')) {
+      const tokens = parseInt(message.split(':')[1]);
+      debug('Token limit reached:', tokens);
+      mainWindow.webContents.send('token-limit-reached', tokens);
+      isOnlineMode = false;
+    } else if (message.startsWith('CALL_LIMIT_REACHED:')) {
+      const calls = parseInt(message.split(':')[1]);
+      debug('Call limit reached:', calls);
+      mainWindow.webContents.send('call-limit-reached', calls);
+      isOnlineMode = false;
+    } else if (message === 'MODE_SWITCH:offline') {
+      debug('Switching to offline mode');
+      isOnlineMode = false;
+      mainWindow.webContents.send('mode-switch', 'offline');
+    }
+  });
 }
 
 app.on('ready', createWindow);
@@ -627,4 +656,92 @@ ipcMain.handle('reset-rate-limits', async () => {
 ipcMain.handle('update-call-usage', async (event, forceUpdate = false) => {
   updateCallUsage(forceUpdate);
   return true;
+});
+
+function runPythonScript(scriptPath, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const pythonPath = getPythonPath();
+    debug('Using Python path:', pythonPath);
+
+    const defaultOptions = {
+      mode: 'text',
+      pythonPath: pythonPath,
+      pythonOptions: ['-u'],
+      scriptPath: path.dirname(scriptPath),
+      args: args
+    };
+
+    const finalOptions = { ...defaultOptions, ...options };
+    debug('Running Python script with options:', finalOptions);
+
+    const pyshell = new PythonShell(scriptPath, finalOptions);
+
+    let output = '';
+    let error = '';
+
+    pyshell.on('message', (message) => {
+      output += message + '\n';
+      debug('Python output:', message);
+    });
+
+    pyshell.on('stderr', (message) => {
+      error += message + '\n';
+      debug('Python error:', message);
+    });
+
+    pyshell.on('error', (err) => {
+      debug('Python shell error:', err);
+      reject(err);
+    });
+
+    pyshell.end((err) => {
+      if (err) {
+        debug('Python script ended with error:', err);
+        reject(err);
+      } else {
+        debug('Python script completed successfully');
+        resolve({ output, error });
+      }
+    });
+  });
+}
+
+// Handle file organization
+ipcMain.handle('organize-files', async (event, { directory, onlineMode }) => {
+  try {
+    // Check if we've reached limits
+    if (onlineMode && (tokenUsage >= TOKEN_LIMIT || callUsage >= CALL_LIMIT)) {
+      debug('Limits reached, forcing offline mode');
+      onlineMode = false;
+    }
+
+    const config = {
+      directory: directory,
+      online_mode: onlineMode
+    };
+
+    const configPath = path.join(app.getPath('temp'), 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify(config));
+
+    const scriptPath = path.join(__dirname, 'backend', 'initial_organize_electron.py');
+    const result = await runPythonScript(scriptPath, [configPath]);
+
+    return {
+      success: true,
+      output: result.output,
+      error: result.error,
+      tokenUsage,
+      callUsage,
+      isOnlineMode
+    };
+  } catch (error) {
+    debug('Error organizing files:', error);
+    return {
+      success: false,
+      error: error.message,
+      tokenUsage,
+      callUsage,
+      isOnlineMode
+    };
+  }
 });

@@ -39,6 +39,55 @@ logger.addHandler(console_handler)
 # Set the root logger level to DEBUG
 logging.getLogger().setLevel(logging.DEBUG)
 
+# Token and call limits
+TOKEN_LIMIT = 30000
+CALL_LIMIT = 10
+total_tokens_used = 0
+total_api_calls = 0
+start_time = None
+last_update_time = None
+
+def update_token_usage(tokens, operation_name):
+    """Update token usage and check limits"""
+    global total_tokens_used, total_api_calls, start_time, last_update_time
+    
+    # Initialize timing if first call
+    if start_time is None:
+        start_time = time.time()
+        last_update_time = start_time
+    
+    # Update counters
+    total_tokens_used += tokens
+    total_api_calls += 1
+    
+    # Calculate current rate
+    current_time = time.time()
+    time_since_last = current_time - last_update_time
+    last_update_time = current_time
+    
+    # Check limits
+    if total_tokens_used >= TOKEN_LIMIT:
+        logger.warning(f"Token limit reached! Used {total_tokens_used} tokens out of {TOKEN_LIMIT}")
+        print(f"TOKEN_LIMIT_REACHED:{total_tokens_used}")
+        return False
+    
+    if total_api_calls >= CALL_LIMIT:
+        logger.warning(f"Call limit reached! Made {total_api_calls} calls out of {CALL_LIMIT}")
+        print(f"CALL_LIMIT_REACHED:{total_api_calls}")
+        return False
+    
+    # Log usage
+    logger.info(f"Token usage update - Operation: {operation_name}")
+    logger.info(f"Total tokens used: {total_tokens_used}/{TOKEN_LIMIT}")
+    logger.info(f"Total API calls: {total_api_calls}/{CALL_LIMIT}")
+    logger.info(f"Time since last call: {time_since_last:.2f}s")
+    
+    # Send usage to frontend
+    print(f"TOKEN_USAGE:{total_tokens_used}")
+    print(f"CALL_USAGE:{total_api_calls}")
+    
+    return True
+
 # Initialize OpenAI client (will be used only in online mode)
 openai_client = None
 try:
@@ -124,96 +173,108 @@ def classify_image(file_path, online_mode=False):
     online_mode = log_mode_usage("classify_image", online_mode)
     try:
         if online_mode and openai_client:
-            # Use OpenAI Vision API
-            logger.info(f"Using OpenAI Vision API for image: {file_path}")
-            with open(file_path, "rb") as image_file:
-                base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+            # Check limits before making API call
+            if not update_token_usage(0, "classify_image_precheck"):
+                logger.warning("Token or call limit reached, switching to offline mode")
+                online_mode = False
+                print("MODE_SWITCH:offline")
             
-            response = openai_client.chat.completions.create(
-                model="gpt-4-vision-preview",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Describe what you see in this image concisely for file organization purposes."},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=300
-            )
-            # Send token usage to main process ONLY in online mode
-            if online_mode and hasattr(response, 'usage'):
-                print(f"TOKEN_USAGE:{response.usage.total_tokens}")
-            summary = response.choices[0].message.content.strip()
-            logger.info(f"OpenAI Vision Summary: {summary}")
-            return f"Image containing {summary.lower()}"
-        else:
-            # Use local methods
-            # First try Moondream if available
-            if moondream_model:
-                logger.info(f"Using Moondream for image: {file_path}")
-                image = Image.open(file_path)
-                caption = moondream_model.caption(image)["caption"]
+            if online_mode:
+                # Use OpenAI Vision API
+                logger.info(f"Using OpenAI Vision API for image: {file_path}")
+                with open(file_path, "rb") as image_file:
+                    base64_image = base64.b64encode(image_file.read()).decode("utf-8")
                 
-                if caption:
-                    # Use the caption with local LLM to generate a more structured summary
-                    if ollama_client:
-                        prompt = f"""Based on this image caption: "{caption}"
+                response = openai_client.chat.completions.create(
+                    model="gpt-4-vision-preview",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Describe what you see in this image concisely for file organization purposes."},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=300
+                )
+                
+                # Update token usage
+                if hasattr(response, 'usage'):
+                    if not update_token_usage(response.usage.total_tokens, "classify_image"):
+                        logger.warning("Token limit reached during image classification")
+                        return None
+                
+                summary = response.choices[0].message.content.strip()
+                logger.info(f"OpenAI Vision Summary: {summary}")
+                return f"Image containing {summary.lower()}"
+        
+        # Fallback to offline mode if online mode failed or limits reached
+        logger.info("Using Moondream model for image classification")
+        # First try Moondream if available
+        if moondream_model:
+            logger.info(f"Using Moondream for image: {file_path}")
+            image = Image.open(file_path)
+            caption = moondream_model.caption(image)["caption"]
+            
+            if caption:
+                # Use the caption with local LLM to generate a more structured summary
+                if ollama_client:
+                    prompt = f"""Based on this image caption: "{caption}"
 Generate a concise summary suitable for file organization. Focus on the main subject and context.
 Return ONLY the summary text, no additional formatting or explanations."""
-                        
-                        response = ollama_client.chat(
-                            model='mistral',
-                            messages=[{'role': 'user', 'content': prompt}],
-                            options={"temperature": 0, "num_predict": 100}
-                        )
-                        
-                        summary = response['message']['content'].strip()
-                        logger.info(f"Moondream Summary: {summary}")
-                        return f"Image containing {summary.lower()}"
-                    else:
-                        # No Ollama available, just use the caption directly
-                        return f"Image containing {caption.lower()}"
-                
-            # If Moondream is not available or failed, use basic image analysis
-            logger.info(f"Using basic image analysis for: {file_path}")
-            try:
-                image = Image.open(file_path)
-                width, height = image.size
-                format_name = image.format
-                mode = image.mode
-                
-                # Very basic image info without ML analysis
-                image_summary = f"Image ({width}x{height} {format_name})"
-                
-                # If Ollama is available, try to use it for a better description based on this basic info
-                if ollama_client:
-                    try:
-                        filename = os.path.basename(file_path)
-                        prompt = f"""Based on these image details: {width}x{height} {format_name} image named '{filename}',
+                    
+                    response = ollama_client.chat(
+                        model='mistral',
+                        messages=[{'role': 'user', 'content': prompt}],
+                        options={"temperature": 0, "num_predict": 100}
+                    )
+                    
+                    summary = response['message']['content'].strip()
+                    logger.info(f"Moondream Summary: {summary}")
+                    return f"Image containing {summary.lower()}"
+                else:
+                    # No Ollama available, just use the caption directly
+                    return f"Image containing {caption.lower()}"
+        
+        # If Moondream is not available or failed, use basic image analysis
+        logger.info(f"Using basic image analysis for: {file_path}")
+        try:
+            image = Image.open(file_path)
+            width, height = image.size
+            format_name = image.format
+            mode = image.mode
+            
+            # Very basic image info without ML analysis
+            image_summary = f"Image ({width}x{height} {format_name})"
+            
+            # If Ollama is available, try to use it for a better description based on this basic info
+            if ollama_client:
+                try:
+                    filename = os.path.basename(file_path)
+                    prompt = f"""Based on these image details: {width}x{height} {format_name} image named '{filename}',
 generate a very concise description that might help organize the file. Focus on what could be in this image based on the filename."""
-                        
-                        response = ollama_client.chat(
-                            model='mistral',
-                            messages=[{'role': 'user', 'content': prompt}],
-                            options={"temperature": 0, "num_predict": 100}
-                        )
-                        
-                        summary = response['message']['content'].strip()
-                        return f"Image possibly containing {summary.lower()}"
-                    except Exception as inner_e:
-                        logger.error(f"Error using Ollama for image description: {str(inner_e)}")
-                
-                return image_summary
-            except Exception as img_e:
-                logger.error(f"Error in basic image analysis: {str(img_e)}")
-                return f"Image file from {os.path.basename(file_path)}"
+                    
+                    response = ollama_client.chat(
+                        model='mistral',
+                        messages=[{'role': 'user', 'content': prompt}],
+                        options={"temperature": 0, "num_predict": 100}
+                    )
+                    
+                    summary = response['message']['content'].strip()
+                    return f"Image possibly containing {summary.lower()}"
+                except Exception as inner_e:
+                    logger.error(f"Error using Ollama for image description: {str(inner_e)}")
+            
+            return image_summary
+        except Exception as img_e:
+            logger.error(f"Error in basic image analysis: {str(img_e)}")
+            return f"Image file from {os.path.basename(file_path)}"
     except Exception as e:
         logger.error(f"Error analyzing image: {str(e)}")
         return f"Image file from {os.path.basename(file_path)}"
@@ -234,14 +295,35 @@ def generate_file_name(summary, online_mode=False, max_length=30):
     }
     
     if online_mode:
-        logger.info("Using OpenAI for filename generation")
-        response = openai_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": json.dumps(prompt)}],
-            temperature=0,
-            max_tokens=50
-        )
-        filename = response.choices[0].message.content.strip()
+        # Check limits before making API call
+        if not update_token_usage(0, "generate_file_name_precheck"):
+            logger.warning("Token or call limit reached, switching to offline mode")
+            online_mode = False
+            print("MODE_SWITCH:offline")
+        
+        if online_mode:
+            logger.info("Using OpenAI for filename generation")
+            response = openai_client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[{"role": "user", "content": json.dumps(prompt)}],
+                temperature=0,
+                max_tokens=50
+            )
+            
+            # Update token usage
+            if hasattr(response, 'usage'):
+                if not update_token_usage(response.usage.total_tokens, "generate_file_name"):
+                    logger.warning("Token limit reached during filename generation")
+                    return None
+            
+            filename = response.choices[0].message.content.strip()
+        else:
+            logger.info("Using Ollama for filename generation")
+            response = ollama_client.chat(
+                model='mistral',
+                messages=[{'role': 'user', 'content': json.dumps(prompt)}]
+            )
+            filename = response['message']['content'].strip()
     else:
         logger.info("Using Ollama for filename generation")
         response = ollama_client.chat(
@@ -312,37 +394,50 @@ Write your response a JSON object with the following schema:
                 }
                 
                 if online_mode:
-                    logger.info(f"Using OpenAI for file summary: {file_path}")
-                    try:
-                        response = openai_client.responses.create(
-                            model="gpt-4-turbo-preview",
-                            input=[
-                                {"role": "system", "content": prompt},
-                                {"role": "user", "content": json.dumps(file_content)}
-                            ],
-                            temperature=0,
-                            max_tokens=256
-                        )
-                        response_content = response.output_text
-                        # Send token usage to main process ONLY in online mode
-                        if online_mode:
-                            print(f"TOKEN_USAGE:{response.usage.total_tokens}")
-                    except Exception as e:
-                        logger.error(f"Error using OpenAI responses API: {str(e)}")
-                        # Fallback to chat completions if responses API fails
-                        response = openai_client.chat.completions.create(
-                            model="gpt-4-turbo-preview",
-                            messages=[
-                                {"role": "system", "content": prompt},
-                                {"role": "user", "content": json.dumps(file_content)}
-                            ],
-                            temperature=0,
-                            max_tokens=256
-                        )
-                        response_content = response.choices[0].message.content
-                        # Send token usage to main process ONLY in online mode
-                        if online_mode:
-                            print(f"TOKEN_USAGE:{response.usage.total_tokens}")
+                    # Check limits before making API call
+                    if not update_token_usage(0, "get_file_summary_precheck"):
+                        logger.warning("Token or call limit reached, switching to offline mode")
+                        online_mode = False
+                        print("MODE_SWITCH:offline")
+                    
+                    if online_mode:
+                        logger.info(f"Using OpenAI for file summary: {file_path}")
+                        try:
+                            response = openai_client.responses.create(
+                                model="gpt-4-turbo-preview",
+                                input=[
+                                    {"role": "system", "content": prompt},
+                                    {"role": "user", "content": json.dumps(file_content)}
+                                ],
+                                temperature=0,
+                                max_tokens=256
+                            )
+                            response_content = response.output_text
+                            
+                            # Update token usage
+                            if hasattr(response, 'usage'):
+                                if not update_token_usage(response.usage.total_tokens, "get_file_summary"):
+                                    logger.warning("Token limit reached during file summary")
+                                    return None
+                        except Exception as e:
+                            logger.error(f"Error using OpenAI responses API: {str(e)}")
+                            # Fallback to chat completions if responses API fails
+                            response = openai_client.chat.completions.create(
+                                model="gpt-4-turbo-preview",
+                                messages=[
+                                    {"role": "system", "content": prompt},
+                                    {"role": "user", "content": json.dumps(file_content)}
+                                ],
+                                temperature=0,
+                                max_tokens=256
+                            )
+                            response_content = response.choices[0].message.content
+                            
+                            # Update token usage
+                            if hasattr(response, 'usage'):
+                                if not update_token_usage(response.usage.total_tokens, "get_file_summary_fallback"):
+                                    logger.warning("Token limit reached during file summary fallback")
+                                    return None
                 else:
                     logger.info(f"Using Ollama for file summary: {file_path}")
                     summary_response = ollama_client.chat(
@@ -397,20 +492,36 @@ def analyze_directory(directory_path, online_mode=False):
         logger.info("🌐 ONLINE MODE: Using OpenAI API for file analysis and organization")
         print("🌐 ONLINE MODE: Using OpenAI API for file analysis and organization")
         
-        # Test OpenAI connectivity
-        try:
-            print("🧪 Testing OpenAI API connectivity...")
-            test_response = openai_client.responses.create(
-                model="gpt-3.5-turbo",
-                input=[{"role": "user", "content": "Respond with OK if you receive this message."}],
-                max_tokens=10
-            )
-            test_result = test_response.output_text.strip()
-            print(f"🧪 OpenAI API test result: {test_result}")
-            logger.info(f"OpenAI API test successful: {test_result}")
-        except Exception as e:
-            print(f"❌ OpenAI API test failed: {str(e)}")
-            logger.error(f"OpenAI API test failed: {str(e)}")
+        # Check limits before making API call
+        if not update_token_usage(0, "analyze_directory_precheck"):
+            logger.warning("Token or call limit reached, switching to offline mode")
+            online_mode = False
+            print("MODE_SWITCH:offline")
+        
+        if online_mode:
+            # Test OpenAI connectivity
+            try:
+                print("🧪 Testing OpenAI API connectivity...")
+                test_response = openai_client.responses.create(
+                    model="gpt-3.5-turbo",
+                    input=[{"role": "user", "content": "Respond with OK if you receive this message."}],
+                    max_tokens=10
+                )
+                test_result = test_response.output_text.strip()
+                print(f"🧪 OpenAI API test result: {test_result}")
+                logger.info(f"OpenAI API test successful: {test_result}")
+                
+                # Update token usage
+                if hasattr(test_response, 'usage'):
+                    if not update_token_usage(test_response.usage.total_tokens, "analyze_directory_test"):
+                        logger.warning("Token limit reached during directory analysis test")
+                        online_mode = False
+                        print("MODE_SWITCH:offline")
+            except Exception as e:
+                print(f"❌ OpenAI API test failed: {str(e)}")
+                logger.error(f"OpenAI API test failed: {str(e)}")
+                online_mode = False
+                print("MODE_SWITCH:offline")
     else:
         logger.info("🖥️ OFFLINE MODE: Using Local LLM (Ollama) for file analysis and organization")
         print("🖥️ OFFLINE MODE: Using Local LLM (Ollama) for file analysis and organization")
