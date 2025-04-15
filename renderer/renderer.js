@@ -705,12 +705,8 @@ async function validateAndAnalyzeDirectory(path) {
   if (!path) return;
   
   try {
-    // Get current mode
-    const currentMode = await getCurrentMode();
-    console.log(`Starting analysis with mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
-    
     // Check rate limits if in online mode
-    if (currentMode) {
+    if (modeToggle.checked) {
       const canProceed = await checkRateLimits();
       if (!canProceed) return;
     }
@@ -723,6 +719,9 @@ async function validateAndAnalyzeDirectory(path) {
       return;
     }
     
+    const currentMode = await getCurrentMode();
+    console.log(`Starting analysis with mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
+    
     // Show loader
     loader.style.display = 'flex';
     resultsContainer.style.display = 'none';
@@ -731,26 +730,25 @@ async function validateAndAnalyzeDirectory(path) {
     debugLog(`Starting analysis for directory: ${path}`);
     debugLog(`Current mode: ${currentMode ? 'ONLINE' : 'OFFLINE'}`);
     
-    let startTime = performance.now();
+    // Check if test.json exists in the project root directory
+    const testJsonExists = await ipcRenderer.invoke('check-test-json');
     
-    // Use organize-files IPC method which explicitly passes online mode
-    const result = await ipcRenderer.invoke('organize-files', {
-      directory: path, 
-      onlineMode: currentMode
-    });
+    let startTime = performance.now();
+    let rawData;
+    
+    if (testJsonExists) {
+      // Use test.json instead of running analysis
+      debugLog('Found test.json in project root, using it instead of running full analysis');
+      rawData = await ipcRenderer.invoke('read-test-json');
+    } else {
+      // Call backend to analyze directory as normal
+      debugLog('No test.json found in project root, running full analysis');
+      rawData = await ipcRenderer.invoke('analyze-directory', path);
+    }
     
     const endTime = performance.now();
     debugLog(`Process completed in ${(endTime - startTime) / 1000} seconds`);
-    debugLog("Result received:", result);
-    
-    if (!result || !result.success) {
-      const errorMsg = result && result.error ? result.error : 'Unknown error';
-      showMessage(`Error: ${errorMsg}`, 'error');
-      loader.style.display = 'none';
-      return false;
-    }
-    
-    let rawData = result.output;
+    debugLog("Raw data received:", rawData);
     
     // Ensure we have a valid data structure
     if (!rawData) {
