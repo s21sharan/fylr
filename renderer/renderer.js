@@ -80,7 +80,7 @@ const callLimitElement = document.querySelector('.call-limit');
 // Add event listener for token usage updates
 ipcRenderer.on('update-token-usage', (event, usage) => {
   if (tokenLimitElement) {
-    tokenLimitElement.textContent = `${usage}/10,000 tokens`;
+    tokenLimitElement.textContent = `${usage}/30,000 tokens`;
   }
 });
 
@@ -685,11 +685,11 @@ tabButtons.forEach(button => {
 
 // Add IPC listeners for rate limit updates
 ipcRenderer.on('update-token-usage', (event, usage) => {
-  tokenLimitElement.textContent = `${usage}/${TOKEN_LIMIT} tokens`;
+  tokenLimitElement.textContent = `${usage}/30,000 tokens`;
 });
 
 ipcRenderer.on('update-call-usage', (event, usage) => {
-  callLimitElement.textContent = `${usage}/${CALL_LIMIT} calls`;
+  callLimitElement.textContent = `${usage}/10 calls`;
 });
 
 // Add function to check rate limits before operations
@@ -1477,3 +1477,6 @@ setTimeout(() => {
     console.error('Could not find renameApplyBtn even with querySelector!');
   }
 }, 1000); // 1 second delay to ensure DOM is fully loaded
+
+const TOKEN_LIMIT = 30000;
+const CALL_LIMIT = 10;
