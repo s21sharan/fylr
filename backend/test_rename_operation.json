@@ -1,0 +1,26 @@
+{
+  "action": "rename",
+  "files": [
+    {
+      "name": "img001.jpg",
+      "type": "file",
+      "path": "/Users/test/img001.jpg"
+    },
+    {
+      "name": "document.pdf",
+      "type": "file",
+      "path": "/Users/test/document.pdf"
+    },
+    {
+      "name": "report_2023.docx",
+      "type": "file",
+      "path": "/Users/test/report_2023.docx"
+    }
+  ],
+  "new_names": {
+    "img001.jpg": "summer_vacation.jpg",
+    "document.pdf": "financial_report.pdf",
+    "report_2023.docx": "annual_summary.docx"
+  },
+  "online_mode": false
+} 

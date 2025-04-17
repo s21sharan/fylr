@@ -1,0 +1,34 @@
+{
+  "message": "Create a folder called 'images' and move all image files (jpg, png) into it",
+  "currentFileStructure": {
+    "files": [
+      {
+        "name": "vacation.jpg",
+        "type": "file",
+        "path": "/Users/test/vacation.jpg"
+      },
+      {
+        "name": "document.pdf",
+        "type": "file",
+        "path": "/Users/test/document.pdf"
+      },
+      {
+        "name": "logo.png",
+        "type": "file",
+        "path": "/Users/test/logo.png"
+      },
+      {
+        "name": "screenshot.jpg",
+        "type": "file",
+        "path": "/Users/test/screenshot.jpg"
+      },
+      {
+        "name": "notes.txt",
+        "type": "file",
+        "path": "/Users/test/notes.txt"
+      }
+    ],
+    "directories": []
+  },
+  "online_mode": false
+} 

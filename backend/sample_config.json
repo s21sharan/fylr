@@ -1,0 +1,24 @@
+{
+  "message": "Create a folder called 'documents' and move all PDF files into it",
+  "currentFileStructure": {
+    "files": [
+      {
+        "name": "report.pdf",
+        "type": "file",
+        "path": "/Users/example/files/report.pdf"
+      },
+      {
+        "name": "notes.txt",
+        "type": "file",
+        "path": "/Users/example/files/notes.txt"
+      },
+      {
+        "name": "presentation.pdf",
+        "type": "file",
+        "path": "/Users/example/files/presentation.pdf"
+      }
+    ],
+    "directories": []
+  },
+  "online_mode": false
+} 

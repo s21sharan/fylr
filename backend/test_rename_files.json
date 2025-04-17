@@ -1,0 +1,22 @@
+{
+  "action": "generate",
+  "message": "Generate descriptive filenames for these files",
+  "files": [
+    {
+      "name": "img001.jpg",
+      "type": "file",
+      "path": "/Users/test/img001.jpg"
+    },
+    {
+      "name": "document.pdf",
+      "type": "file",
+      "path": "/Users/test/document.pdf"
+    },
+    {
+      "name": "report_2023.docx",
+      "type": "file",
+      "path": "/Users/test/report_2023.docx"
+    }
+  ],
+  "online_mode": false
+} 
