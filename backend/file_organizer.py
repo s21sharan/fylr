@@ -45,7 +45,8 @@ except Exception as e:
     raise
 
 FILE_PROMPT = """
-You will be provided with list of source files and a summary of their contents. Organize all the files into a directory structure that optimally organizes the files using known conventions and best practices.
+You will be provided with list of source files and a summary of their contents. Organize all the files into a directory structure that optimally organizes the files using known conventions and best practices. Group them by similar themes, topics, or purposes.
+
 Follow good naming conventions.
 
 Here are some examples of how to organize student files:
@@ -61,9 +62,10 @@ EXAMPLE 1 - Computer Science Student:
 -Project
     -Web_App_Final_Project_Code.zip
     -Mobile_App_Design_Documentation.pdf
--Study_Materials
-    -Programming_Interview_Prep_Notes.pdf
-    -System_Design_Study_Guide.pdf
+-Pets
+    -Golden_Retriever_Sun.jpg
+    -Labrador_Puppy_Playing.jpg
+    -Persian_Cat_Sleeping.jpg
 
 EXAMPLE 2 - Medical Student:
 -Academic
@@ -76,9 +78,10 @@ EXAMPLE 2 - Medical Student:
 -Research
     -Medical_Research_Proposal.docx
     -Literature_Review_Cancer_Treatment.pdf
--Study_Materials
-    -USMLE_Step_1_Notes.pdf
-    -Medical_Terminology_Flashcards.pdf
+-Cars
+    -porsche_911_GT3_RS.jpg
+    -ferrari_488_Spider.jpg
+    -lamborghini_Huracan_EVO.jpg
 
 EXAMPLE 3 - Business Student:
 -Academic
